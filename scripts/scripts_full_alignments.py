@@ -14,15 +14,14 @@
 import os
 from os.path import join
 import subprocess
-import pandas as pd
 import logging
-from datetime import datetime
 
 MATCHING_BRACKETS = {')': '(', ']': '[', '}': '{', '>': '<'}
 MATCHING_PSEUDOKNOTS = {'a': 'A', 'b': 'B', 'c': 'C', 'd': 'D'}
 DIR_DATA = '/Users/u7875558/Documents/PhD/RNAPhylo/data/'
 DIR_OUTPUTS = '/Users/u7875558/Documents/PhD/RNAPhylo/output_analysis'
 
+"""
 def create_directory(dir_base, dir_subs):
     # create new directories to save outputs
     # dir_base: the parent path
@@ -33,6 +32,14 @@ def create_directory(dir_base, dir_subs):
         os.makedirs(path, exist_ok=True)
         paths[dir_sub] = path
     return paths
+"""
+
+
+def create_directory(dir_base, dir_sub):
+    path = join(dir_base, dir_sub)
+    os.makedirs(path, exist_ok=True)
+    return path
+
 
 def parseFastaAndSS(fi_stoFile, fp_fasta, fp_ss, ac):
     with open(fi_stoFile, 'r', encoding='utf-8', errors='ignore') as f:
@@ -43,45 +50,45 @@ def parseFastaAndSS(fi_stoFile, fp_fasta, fp_ss, ac):
     sequences = [l for l in lines if not l.startswith('#') and not l.startswith('/') and l.strip()]
 
     for line in sequences:
-        parts=line.split()
-        if len(parts)==2 and parts[1] not in alignments.values():
-            name=parts[0]
-            seq=parts[1]
+        parts = line.split()
+        if len(parts) == 2 and parts[1] not in alignments.values():
+            name = parts[0]
+            seq = parts[1]
             alignments[name] = seq
 
     # fasta and ss outputs are created only when the aligments have the size >=4
-    if len(alignments) >=4:
+    if len(alignments) >= 4:
         # produce the fasta file
-        nodup_fasta =join(fp_fasta, f'{ac}.nodup.fa')
+        nodup_fasta = join(fp_fasta, f'{ac}.nodup.fa')
         with open(nodup_fasta, 'w') as fasta_file:
             for name, seq in alignments.items():
                 fasta_file.write(f'>{name}\n{seq}\n')
 
         # produce the consensus secondary structure file
-        ss_cons=''
-        ss_cons_found=False
+        ss_cons = ''
+        ss_cons_found = False
 
         for line in lines:
             if line.startswith('#=GC SS_cons') and not ss_cons_found:
-                ss_cons+=line.split(maxsplit=2)[2].strip()
-                ss_cons_found=True
+                ss_cons += line.split(maxsplit=2)[2].strip()
+                ss_cons_found = True
 
         if ss_cons_found:
             # ignore pseudoknots and convert all of them into unpaired bases
-            ss_convert_pseudo_unpaired=convertPseudoknotstoUnpairedBases(ss_cons)
-            ss_convert_pseudo_paired=convertPseudoknotstoBrackets(ss_cons)
+            ss_convert_pseudo_unpaired = convertPseudoknotstoUnpairedBases(ss_cons)
+            ss_convert_pseudo_paired = convertPseudoknotstoBrackets(ss_cons)[0]
 
-            if ss_convert_pseudo_unpaired==ss_convert_pseudo_paired:
+            if ss_convert_pseudo_unpaired == ss_convert_pseudo_paired:
                 logging.info(f'{ac} has no pseudokntos in the consensus structure.')
             else:
-                if len(ss_convert_pseudo_paired) !=0:
-                    ss_pseudo_paired=join(fp_ss, f'{ac}.pseudo.paired.ss')
+                if len(ss_convert_pseudo_paired) != 0:
+                    ss_pseudo_paired = join(fp_ss, f'{ac}.pseudo.paired.ss')
                     with open(ss_pseudo_paired, 'w') as f:
                         f.write(ss_convert_pseudo_paired)
                 else:
                     logging.error(f'{ac} has no conversion occured.')
 
-            if len(set(ss_convert_pseudo_unpaired)) !=1:
+            if len(set(ss_convert_pseudo_unpaired)) != 1:
                 ss_pseudo_unpaired = join(fp_ss, f'{ac}.pseudo.unpaired.ss')
                 with open(ss_pseudo_unpaired, 'w') as ss_f:
                     ss_f.write(ss_convert_pseudo_unpaired)
@@ -96,12 +103,14 @@ def parseFastaAndSS(fi_stoFile, fp_fasta, fp_ss, ac):
         logging.info(f'{ac} has less than 4 sequences in the alignment.')
         return None, None, None
 
+
 def convertPseudoknotstoUnpairedBases(rna_structure):
-    conversion={
+    conversion = {
         ':': '.', ',': '.', '_': '.', '~': '.', '-': '.',
         'A': '.', 'a': '.', 'B': '.', 'b': '.', 'C': '.', 'c': '.', 'D': '.', 'd': '.'
     }
     return ''.join(conversion.get(char, char) for char in rna_structure)
+
 
 def convertPseudoknotstoBrackets(rna_structure):
     conversion = {':': '.', ',': '.', '_': '.', '~': '.', '-': '.'}
@@ -114,11 +123,12 @@ def convertPseudoknotstoBrackets(rna_structure):
         elif char in pos_closing_pseudoknots:
             pos_closing_pseudoknots[char].append(pos)
 
-    pos_opening_pseudoknots = {k:v for k,v in pos_opening_pseudoknots.items() if len(v) !=0}
-    pos_closing_pseudoknots = {k:v for k,v in pos_closing_pseudoknots.items() if len(v) !=0}
-    srt_pos_opening_pseudoknots = {o : sorted(pos_opening_pseudoknots[o])[0] for o in pos_opening_pseudoknots}
-    srt_pos_closing_pseudoknots = {c : sorted(pos_closing_pseudoknots[c], reverse=True)[0] for c in pos_closing_pseudoknots}
-    srt_pos_opening_pseudoknots = {k:v for k, v in sorted(srt_pos_opening_pseudoknots.items(), key=lambda val:val[1])}
+    pos_opening_pseudoknots = {k: v for k, v in pos_opening_pseudoknots.items() if len(v) != 0}
+    pos_closing_pseudoknots = {k: v for k, v in pos_closing_pseudoknots.items() if len(v) != 0}
+    srt_pos_opening_pseudoknots = {o: sorted(pos_opening_pseudoknots[o])[0] for o in pos_opening_pseudoknots}
+    srt_pos_closing_pseudoknots = {c: sorted(pos_closing_pseudoknots[c], reverse=True)[0] for c in
+                                   pos_closing_pseudoknots}
+    srt_pos_opening_pseudoknots = {k: v for k, v in sorted(srt_pos_opening_pseudoknots.items(), key=lambda val: val[1])}
 
     converted_structure = ''.join(conversion.get(char, char) for char in rna_structure)
 
@@ -128,9 +138,11 @@ def convertPseudoknotstoBrackets(rna_structure):
                 end_pos = srt_pos_closing_pseudoknots[c]
                 start_pos = srt_pos_opening_pseudoknots[o]
 
-                sub = converted_structure[start_pos:end_pos+1]
-                used_brackets = set([char for char in sub if char in MATCHING_BRACKETS or char in MATCHING_BRACKETS.values()])
-                new_matching_bracket = {k: v for k, v in MATCHING_BRACKETS.items() if k not in used_brackets and v not in used_brackets}
+                sub = converted_structure[start_pos:end_pos + 1]
+                used_brackets = set(
+                    [char for char in sub if char in MATCHING_BRACKETS or char in MATCHING_BRACKETS.values()])
+                new_matching_bracket = {k: v for k, v in MATCHING_BRACKETS.items() if
+                                        k not in used_brackets and v not in used_brackets}
 
                 if len(new_matching_bracket) != 0:
                     k, v = list(new_matching_bracket.items())[0]
@@ -152,6 +164,7 @@ def convertPseudoknotstoBrackets(rna_structure):
         return '', conversion
     else:
         return converted_structure, conversion
+
 
 def validateBracketsWithPositions(rna_structure):
     stacks = {'(': [], '[': [], '{': [], '<': [], 'A': [], 'B': [], 'C': [], 'D': []}
@@ -186,6 +199,7 @@ def validateBracketsWithPositions(rna_structure):
 
     return True, sorted(flat_pairing_positions, key=lambda tup: tup[1])
 
+
 def find_fully_closed_brackets(substring):
     stack = []
     fully_closed = set()
@@ -200,39 +214,53 @@ def find_fully_closed_brackets(substring):
                 stack.clear()
     return list(fully_closed)
 
+
 def run_command(command):
     process = subprocess.Popen(command, shell=True)
     process.communicate()
 
+
 def main():
-    #IQTREE_EXECUTE = '/Users/u7875558/Documents/PhD/tools/iqtree-2.2.2.6-MacOSX/bin/iqtree2'
+    # IQTREE_EXECUTE = '/Users/u7875558/Documents/PhD/tools/iqtree-2.2.2.6-MacOSX/bin/iqtree2'
     RAXML_EXECUTE = '/Users/u7875558/Documents/PhD/tools/standard-RAxML-master/raxmlHPC'
 
-    rf='RF01833'
-    sto_file=join(DIR_DATA, 'full_alignments', f'{rf}.sto')
+    overlapping_pseudo_rnas = ['RF01833']
+    overlapping_nopseudo_rnas = ['RF00740', 'RF00341', 'RF01899', 'RF00958', 'RF00872', 'RF00987', 'RF04090', 'RF02613',
+                                 'RF00319', 'RF02451', 'RF00758', 'RF00877', 'RF01002', 'RF04121', 'RF03283', 'RF01007',
+                                 'RF01383', 'RF03414', 'RF00723', 'RF02725', 'RF01038', 'RF00870', 'RF04290', 'RF01903',
+                                 'RF00119', 'RF04076', 'RF04250', 'RF01014', 'RF00433', 'RF00769', 'RF03029', 'RF00807',
+                                 'RF02610', 'RF02724', 'RF00725', 'RF03292', 'RF01902']
 
-    #create_directory(DIR_FULLALIGN, fasta)
-    #create_directory(DIR_FULLALIGN, converted_ss)
-    #create_directory(DIR_FULLALIGN, alignments)
+    # the .sto files are not all downloaded
+    # This section is aimed to download only required files
+    dir_sto = create_directory(DIR_DATA, 'full_alignments')
 
-    #alignment_file=join(create_directory(DIR_DATA, 'alignments'), f'{rf}.align')
-    nodup_fasta, paired_pseudo_ss, unpaired_pseudo_ss = parseFastaAndSS(sto_file,
-                                                                        create_directory(DIR_DATA, 'fasta'),
-                                                                        create_directory(DIR_DATA, 'converted_ss')
-                                                                        )
+    for rf in overlapping_nopseudo_rnas:
+        if not os.path.isfile(join(dir_sto, f'{rf}.sto')):
+            url = f'https://ftp.ebi.ac.uk/pub/databases/Rfam/CURRENT/full_alignments/{rf}.sto'
+            subprocess.run(['wget', url, '-P', dir_sto])
 
-    if nodup_fasta and paired_pseudo_ss and unpaired_pseudo_ss:
-        raxml_prefix=join(DIR_OUTPUTS, 'raxml', rf)
-        raxml_paired_pseudo_prefix=join(DIR_OUTPUTS, 'raxml_wPseu', rf)
-        raxml_unpaired_pseudo_prefix=join(DIR_OUTPUTS, 'raxmlP_iPseu', rf)
+        sto_file = join(dir_sto, f'{rf}.sto')
 
-        raxml_command = f"bash bashFiles/raxml.sh {rf} {nodup_fasta} {raxml_prefix} {RAXML_EXECUTE}"
-        raxml_unpaired_pseudo_command = f"bash bashFiles/raxmlP.sh {rf} {nodup_fasta} {raxml_unpaired_pseudo_prefix} {RAXML_EXECUTE}"
-        raxml_paired_pseudo_command = f"bash bashFiles/raxmlP.sh {rf} {nodup_fasta} {raxml_paired_pseudo_prefix} {RAXML_EXECUTE}"
+        nodup_fasta, paired_pseudo_ss, unpaired_pseudo_ss = parseFastaAndSS(sto_file,
+                                                                            create_directory(DIR_DATA, 'fasta'),
+                                                                            create_directory(DIR_DATA, 'converted_ss'),
+                                                                            rf)
 
-        run_command(raxml_command)
-        run_command(raxml_unpaired_pseudo_command)
-        run_command(raxml_paired_pseudo_command)
+        if nodup_fasta and paired_pseudo_ss and unpaired_pseudo_ss:
+            raxml_prefix = join(DIR_OUTPUTS, 'raxml', rf)
+            raxml_paired_pseudo_prefix = join(DIR_OUTPUTS, 'raxml_wPseu', rf)
+            raxml_unpaired_pseudo_prefix = join(DIR_OUTPUTS, 'raxmlP_iPseu', rf)
+
+            raxml_command = f"bash bashFiles/raxml.sh {rf} {nodup_fasta} {raxml_prefix} {RAXML_EXECUTE}"
+            raxml_unpaired_pseudo_command = f"bash bashFiles/raxmlP.sh {rf} {nodup_fasta} {raxml_unpaired_pseudo_prefix} {RAXML_EXECUTE}"
+            raxml_paired_pseudo_command = f"bash bashFiles/raxmlP.sh {rf} {nodup_fasta} {raxml_paired_pseudo_prefix} {RAXML_EXECUTE}"
+
+            run_command(raxml_command)
+            run_command(raxml_unpaired_pseudo_command)
+            run_command(raxml_paired_pseudo_command)
+        else:
+            print(f'{rf} does not qualify for the analysis.')
 
 
 if __name__ == "__main__":
