@@ -15,6 +15,7 @@ import os
 from os.path import join
 import subprocess
 import logging
+from datetime import datetime
 
 MATCHING_BRACKETS = {')': '(', ']': '[', '}': '{', '>': '<'}
 MATCHING_PSEUDOKNOTS = {'a': 'A', 'b': 'B', 'c': 'C', 'd': 'D'}
@@ -42,7 +43,7 @@ def create_directory(dir_base, dir_sub):
 
 
 def parseFastaAndSS(fi_stoFile, fp_fasta, fp_ss, ac):
-    with open(fi_stoFile, 'r', encoding='utf-8', errors='ignore') as f:
+    with open(fi_stoFile, 'r') as f:
         lines = f.readlines()
 
     alignments = dict()
@@ -59,8 +60,8 @@ def parseFastaAndSS(fi_stoFile, fp_fasta, fp_ss, ac):
     # fasta and ss outputs are created only when the aligments have the size >=4
     if len(alignments) >= 4:
         # produce the fasta file
-        nodup_fasta = join(fp_fasta, f'{ac}.nodup.fa')
-        with open(nodup_fasta, 'w') as fasta_file:
+        nodup_fasta_file = join(fp_fasta, f'{ac}.nodup.fa')
+        with open(nodup_fasta_file, 'w') as fasta_file:
             for name, seq in alignments.items():
                 fasta_file.write(f'>{name}\n{seq}\n')
 
@@ -76,31 +77,29 @@ def parseFastaAndSS(fi_stoFile, fp_fasta, fp_ss, ac):
         if ss_cons_found:
             # ignore pseudoknots and convert all of them into unpaired bases
             ss_convert_pseudo_unpaired = convertPseudoknotstoUnpairedBases(ss_cons)
-            ss_convert_pseudo_paired = convertPseudoknotstoBrackets(ss_cons)[0]
-
-            if ss_convert_pseudo_unpaired == ss_convert_pseudo_paired:
-                logging.info(f'{ac} has no pseudokntos in the consensus structure.')
-            else:
-                if len(ss_convert_pseudo_paired) != 0:
-                    ss_pseudo_paired = join(fp_ss, f'{ac}.pseudo.paired.ss')
-                    with open(ss_pseudo_paired, 'w') as f:
-                        f.write(ss_convert_pseudo_paired)
-                else:
-                    logging.error(f'{ac} has no conversion occured.')
-
             if len(set(ss_convert_pseudo_unpaired)) != 1:
-                ss_pseudo_unpaired = join(fp_ss, f'{ac}.pseudo.unpaired.ss')
-                with open(ss_pseudo_unpaired, 'w') as ss_f:
-                    ss_f.write(ss_convert_pseudo_unpaired)
+                ss_convert_pseudo_unpaired_file = os.path.join(fp_ss, f'{ac}.pseudo.unpaired.ss')
+                with open(ss_convert_pseudo_unpaired_file, 'w') as ss_file:
+                    ss_file.write(ss_convert_pseudo_unpaired + '\n')
 
-                # If there is stem, keep pseudoknots and convert them into the right brackets
-                # which will be accepted in other phylogenetic tools
+                ss_convert_pseudo_paired_file = os.path.join(fp_ss, f"{ac}.pseudo.paired.ss")
+                ss_convert_pseudo_paired = convertPseudoknotstoBrackets(ss_cons)[0]
+                if len(ss_convert_pseudo_paired) != 0:
+                    with open(ss_convert_pseudo_paired_file, "w") as ss_file:
+                        ss_file.write(ss_convert_pseudo_paired + "\n")
+                else:
+                    logging.error(f'No conversion occurred for {ac}.')
             else:
-                logging.error(f'{ac} has only unpaired bases')
+                logging.warning(f'{ac}: The secondary structure of {ac} has only unpaired bases.')
         else:
-            logging.info(f'{ac} has no found secondary structure.')
+            logging.warning(f'{ac}: No secondary structure found.')
+
+        if ss_convert_pseudo_unpaired == ss_convert_pseudo_paired:
+            logging.info(f'{ac} does not have pseudoknots.')
+        logging.info(f'Fasta and converted secondary structure files of {ac} are created. ')
+        return nodup_fasta_file, ss_convert_pseudo_unpaired_file, ss_convert_pseudo_paired_file
     else:
-        logging.info(f'{ac} has less than 4 sequences in the alignment.')
+        logging.info(f'Number of sequences of {ac} is less than 4.')
         return None, None, None
 
 
@@ -223,7 +222,10 @@ def run_command(command):
 def main():
     # IQTREE_EXECUTE = '/Users/u7875558/Documents/PhD/tools/iqtree-2.2.2.6-MacOSX/bin/iqtree2'
     RAXML_EXECUTE = '/Users/u7875558/Documents/PhD/tools/standard-RAxML-master/raxmlHPC'
-
+    #log_filename = os.path.join(paths['logs'], f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log")
+    log_path=create_directory(DIR_OUTPUTS, 'logs')
+    log_filename=join(log_path, f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log")
+    logging.basicConfig(filename=log_filename, level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
     overlapping_pseudo_rnas = ['RF01833']
     overlapping_nopseudo_rnas = ['RF00740', 'RF00341', 'RF01899', 'RF00958', 'RF00872', 'RF00987', 'RF04090', 'RF02613',
                                  'RF00319', 'RF02451', 'RF00758', 'RF00877', 'RF01002', 'RF04121', 'RF03283', 'RF01007',
@@ -253,8 +255,8 @@ def main():
             raxml_unpaired_pseudo_prefix = join(DIR_OUTPUTS, 'raxmlP_iPseu', rf)
 
             raxml_command = f"bash bashFiles/raxml.sh {rf} {nodup_fasta} {raxml_prefix} {RAXML_EXECUTE}"
-            raxml_unpaired_pseudo_command = f"bash bashFiles/raxmlP.sh {rf} {nodup_fasta} {raxml_unpaired_pseudo_prefix} {RAXML_EXECUTE}"
-            raxml_paired_pseudo_command = f"bash bashFiles/raxmlP.sh {rf} {nodup_fasta} {raxml_paired_pseudo_prefix} {RAXML_EXECUTE}"
+            raxml_unpaired_pseudo_command = f"bash bashFiles/raxmlP.sh {rf} {nodup_fasta} {unpaired_pseudo_ss} {raxml_unpaired_pseudo_prefix} {RAXML_EXECUTE}"
+            raxml_paired_pseudo_command = f"bash bashFiles/raxmlP.sh {rf} {nodup_fasta} {paired_pseudo_ss} {raxml_paired_pseudo_prefix} {RAXML_EXECUTE}"
 
             run_command(raxml_command)
             run_command(raxml_unpaired_pseudo_command)
