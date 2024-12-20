@@ -47,14 +47,13 @@ def parseFastaAndSS(fi_stoFile, fp_fasta, fp_ss, ac):
         lines = f.readlines()
 
     alignments = dict()
-    # sequences lines do not start with any '#' and '/'
     sequences = [l for l in lines if not l.startswith('#') and not l.startswith('/') and l.strip()]
 
     for line in sequences:
         parts = line.split()
-        if len(parts) == 2 and parts[1] not in alignments.values():
+        seq =parts[1].upper().replace('.', '-')
+        if len(parts) == 2 and seq not in alignments.values():
             name = parts[0]
-            seq = parts[1]
             alignments[name] = seq
 
     # fasta and ss outputs are created only when the aligments have the size >=4
