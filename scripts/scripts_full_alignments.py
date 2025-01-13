@@ -251,7 +251,7 @@ def main():
         if nodup_fasta and paired_pseudo_ss and unpaired_pseudo_ss:
             raxml_prefix = join(DIR_OUTPUTS, 'raxml', rf)
             raxml_paired_pseudo_prefix = join(DIR_OUTPUTS, 'raxml_wPseu', rf)
-            raxml_unpaired_pseudo_prefix = join(DIR_OUTPUTS, 'raxmlP_iPseu', rf)
+            raxml_unpaired_pseudo_prefix = join(DIR_OUTPUTS, 'raxml_iPseu', rf)
 
             raxml_command = f"bash bashFiles/raxml.sh {rf} {nodup_fasta} {raxml_prefix} {RAXML_EXECUTE}"
             raxml_unpaired_pseudo_command = f"bash bashFiles/raxmlP.sh {rf} {nodup_fasta} {unpaired_pseudo_ss} {raxml_unpaired_pseudo_prefix} {RAXML_EXECUTE}"
