@@ -208,11 +208,17 @@ def find_fully_closed_brackets(substring):
 
 def run_command(command):
     """Run shell commands"""
-    print(f"Running: {command}")
-    result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    if result.returncode != 0:
-        print(f"❌ Command failed: {result.stderr}")
-    return result.returncode
+    logging.info(f"Running: {command}")
+    try:
+        result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        logging.info(f"Output:\n{result.stdout}")
+
+        if result.returncode != 0:
+            logging.error(f"❌ Command failed: {result.stderr}")
+        return result
+    except Exception as e:
+        logging.exception(f"Failed to execute command: {command}")
+        return None
     #process.communicate()
 
 def check_branch_length(diroutput, rna):
@@ -238,11 +244,11 @@ def main():
     DIR_WORKING = '/scratch/dx61/vh5686/tmp/RNAPhylo'
     PROJECT='500_full_alignments'
     DIR_SUBS=['data/sto', 'data/fasta', 'data/converted_ss',
-              'logs', 'outputs_analysis', 'logs' ]
+              'logs', 'outputs_analysis', 'logs']
 
     PATHS=create_directories(DIR_WORKING, PROJECT, DIR_SUBS)
-    log_filename=join(PATHS['logs'], f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log")
-    logging.basicConfig(filename=log_filename, level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+    log_file=join(PATHS['logs'], f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log")
+    logging.basicConfig(filename=log_file, level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
     # manually parse 500 RNA families
     analysed_nopseudo_rnas = ['RF01922', 'RF00894', 'RF00712', 'RF02421', 'RF01797', 'RF04204', 'RF01316', 'RF03851', 'RF02539',
@@ -286,73 +292,62 @@ def main():
     for rf in analysed_nopseudo_rnas:
         sto_file=os.path.join(dir_sto, f'{rf}.sto')
 
-        # 🟢 Step 1: Skip download if file exists
         if os.path.isfile(sto_file):
-            print(f"✅ {rf}.sto already exists. Skipping download.")
+            logging.info(f"✅ {rf}.sto already exists. Skipping download.")
             continue
 
         # 🟠 Step 2: File does not exist, check URL availability
         url = f"https://ftp.ebi.ac.uk/pub/databases/Rfam/CURRENT/full_alignments/{rf}.sto"
-        try:
-            response = requests.head(url, timeout=10)
-            if response.status_code != 200:
-                print(f"⚠️ {rf}.sto does not exist in the Rfam database. Skipping.")
-                failed_downloads.append(rf)
+        response = requests.head(url)
+
+        if response.status_code == 200:
+            logging.info(f"⬇️ Downloading {rf}.sto...")
+            #logging.info(f"⚠️ {rf}.sto does not exist in the Rfam database. Skipping.")
+            result = run_command(f"wget {url} -P {dir_sto}")
+
+            if result and result.returncode == 0:
+                logging.info(f"✅ Succesfully downloaded {rf}.sto")
+            else:
+                logging.error(f"❌ Failed to download {rf}.sto")
+                #failed_downloads.append{rf}
                 continue
-        except requests.RequestException as e:
-            print(f"❌ Error checking {url}: {e}")
-            failed_downloads.append(rf)
-            continue
-
-        # 🔵 Step 3: Download the file
-        print(f"⬇️ Downloading {rf}.sto...")
-        result = run_command(f"wget {url} -P {dir_sto}")
-
-        # 🛑 Step 4: Check if download was successful
-        if result != 0 or not os.path.isfile(sto_file):
-            print(f"❌ Failed to download {rf}.sto.")
-            failed_downloads.append(rf)
-            continue
-
-        print(f"✅ Successfully downloaded {rf}.sto")
-
-        # 🟢 Step 5: Process the file if download succeeded
-        nodup_fasta, paired_pseudo_ss, unpaired_pseudo_ss = parseFastaAndSS(
-            sto_file,
-            PATHS['data/fasta'],
-            PATHS['data/converted_ss'],
-            rf
-        )
-
-        # 🔵 Step 6: Submit jobs if valid files were generated
-        if nodup_fasta and paired_pseudo_ss and unpaired_pseudo_ss:
-            raxml_prefix = os.path.join(dir_output, 'raxml', rf)
-            raxml_unpaired_pseudo_prefix = os.path.join(dir_output, 'raxml_iPseu', rf)
-
-            raxml_command = (
-                f"qsub -V -N raxml_{rf} -o {PATHS['logs']} -e {PATHS['logs']} "
-                f"-l ncpus=12 -l mem=48gb -l walltime=48:00:00 -l wd -- "
-                f"bash bashFiles/raxml.sh {rf} {nodup_fasta} {raxml_prefix} {RAXML_EXECUTE}"
-            )
-            raxml_unpaired_pseudo_command = (
-                f"qsub -V -N raxmlP_{rf} -o {PATHS['logs']} -e {PATHS['logs']} "
-                f"-l ncpus=12 -l mem=48gb -l walltime=48:00:00 -l wd -- "
-                f"bash bashFiles/raxmlP.sh {rf} {nodup_fasta} {unpaired_pseudo_ss} {raxml_unpaired_pseudo_prefix} {RAXML_EXECUTE}"
-            )
-
-            run_command(raxml_command)
-            run_command(raxml_unpaired_pseudo_command)
-
         else:
-            print(f"⚠️ {rf} does not qualify for the analysis.")
+            logging.warning(f"{rf}.sto does not exist onthe full-alignment database.")
+            failed_downloads.append(rf)
+            continue
 
-    # 🔴 Step 7: Print a report of failed downloads
     if failed_downloads:
-        print("\n🚨 The following files failed to download or were missing:")
-        for rf in failed_downloads:
-            print(f" - {rf}")
+        logging.info(f"\n🚨 The following files failed to download or were missing: {failed_downloads}")
     else:
-        print("✅ All files processed successfully.")
+        logging.info("✅ All files processed successfully.")
+
+    for rf in analysed_nopseudo_rnas:
+        sto_file=os.path.join(dir_sto, f'{rf}.sto')
+        if os.path.isfile(sto_file):
+            nodup_fasta, paired_pseudo_ss, unpaired_pseudo_ss = parseFastaAndSS(sto_file, PATHS['data/fasta'],
+                                                                                PATHS['data/converted_ss'], rf)
+
+            if nodup_fasta and paired_pseudo_ss and unpaired_pseudo_ss:
+                raxml_prefix = os.path.join(dir_output, 'raxml', rf)
+                raxml_unpaired_pseudo_prefix = os.path.join(dir_output, 'raxml_iPseu', rf)
+
+                raxml_command = (
+                    f"qsub -V -N raxml_{rf} -o {PATHS['logs']} -e {PATHS['logs']} "
+                    f"-l ncpus=12 -l mem=48gb -l walltime=48:00:00 -l wd -- "
+                    f"bash bashFiles/raxml.sh {rf} {nodup_fasta} {raxml_prefix} {RAXML_EXECUTE}"
+                )
+                raxml_unpaired_pseudo_command = (
+                    f"qsub -V -N raxmlP_{rf} -o {PATHS['logs']} -e {PATHS['logs']} "
+                    f"-l ncpus=12 -l mem=48gb -l walltime=48:00:00 -l wd -- "
+                    f"bash bashFiles/raxmlP.sh {rf} {nodup_fasta} {unpaired_pseudo_ss} {raxml_unpaired_pseudo_prefix} {RAXML_EXECUTE}"
+                )
+
+                run_command(raxml_command)
+                run_command(raxml_unpaired_pseudo_command)
+
+            else:
+                logging.info(f"⚠️ {rf} does not qualify for the analysis.")
+
 """
     if os.path.isfile(sto_file):
         nodup_fasta, paired_pseudo_ss, unpaired_pseudo_ss = parseFastaAndSS(sto_file,

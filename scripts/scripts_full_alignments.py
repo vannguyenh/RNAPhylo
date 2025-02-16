@@ -16,11 +16,14 @@ from os.path import join
 import subprocess
 import logging
 from datetime import datetime
+from Bio import Phylo
 
 MATCHING_BRACKETS = {')': '(', ']': '[', '}': '{', '>': '<'}
 MATCHING_PSEUDOKNOTS = {'a': 'A', 'b': 'B', 'c': 'C', 'd': 'D'}
 DIR_DATA = '/Users/u7875558/Documents/PhD/RNAPhylo/data/'
 DIR_OUTPUTS = '/Users/u7875558/Documents/PhD/RNAPhylo/output_analysis'
+
+SEED_SUBFOLDERS=['raxml', 'raxmlP_wPseu', 'raxmlP_woPseu']
 
 """
 def create_directory(dir_base, dir_subs):
@@ -40,7 +43,6 @@ def create_directory(dir_base, dir_sub):
     path = join(dir_base, dir_sub)
     os.makedirs(path, exist_ok=True)
     return path
-
 
 def parseFastaAndSS(fi_stoFile, fp_fasta, fp_ss, ac):
     with open(fi_stoFile, 'r') as f:
@@ -101,14 +103,12 @@ def parseFastaAndSS(fi_stoFile, fp_fasta, fp_ss, ac):
         logging.info(f'Number of sequences of {ac} is less than 4.')
         return None, None, None
 
-
 def convertPseudoknotstoUnpairedBases(rna_structure):
     conversion = {
         ':': '.', ',': '.', '_': '.', '~': '.', '-': '.',
         'A': '.', 'a': '.', 'B': '.', 'b': '.', 'C': '.', 'c': '.', 'D': '.', 'd': '.'
     }
     return ''.join(conversion.get(char, char) for char in rna_structure)
-
 
 def convertPseudoknotstoBrackets(rna_structure):
     conversion = {':': '.', ',': '.', '_': '.', '~': '.', '-': '.'}
@@ -163,7 +163,6 @@ def convertPseudoknotstoBrackets(rna_structure):
     else:
         return converted_structure, conversion
 
-
 def validateBracketsWithPositions(rna_structure):
     stacks = {'(': [], '[': [], '{': [], '<': [], 'A': [], 'B': [], 'C': [], 'D': []}
     pairing_positions = {'(': [], '[': [], '{': [], '<': [], 'A': [], 'B': [], 'C': [], 'D': []}
@@ -197,7 +196,6 @@ def validateBracketsWithPositions(rna_structure):
 
     return True, sorted(flat_pairing_positions, key=lambda tup: tup[1])
 
-
 def find_fully_closed_brackets(substring):
     stack = []
     fully_closed = set()
@@ -217,26 +215,87 @@ def run_command(command):
     process = subprocess.Popen(command, shell=True)
     process.communicate()
 
+def check_branch_length(diroutput, rna):
+    expected_files = [f"{i:02d}" for i in range(1, 11)]
+    dirRNA=os.path.join(diroutput, rna)
+
+    delete_files=list()
+    for file_name in os.listdir(dirRNA):
+        for seed in expected_files:
+            if file_name.startswith('RAxML_bestTree') and file_name.endswith(seed):
+                tree_path=os.path.join(dirRNA, file_name)
+                tree=Phylo.read(tree_path, 'newick')
+                for clade in tree.find_clades():
+                    if clade.branch_length and clade.branch_length > 1:
+                        delete_files.append(file_name)
+
+    if len(delete_files) > 0:
+        return rna
+
+def extractAnalysedRNAs(diroutput, log_file, subfolders):
+    # This function produces two sets of accepted RNAs -- RNAs containing pseudoknots and RNAs containing no pseudoknots
+    # extract accepeted RNAs which do not have any branch length > 1
+    rnas=os.listdir(join(diroutput, subfolders[0]))
+
+    unaccepted_rnas=list()
+    accepted_rnas=list()
+    for rna in rnas:
+        #result=list()
+        # consider only the outputs from using DNA
+        dir_working=join(diroutput, subfolders[0])
+        if check_branch_length(dir_working, rna) == rna:
+            #logging.warning(f'{rna} inferred from using DNA has branch length > 1.')
+            unaccepted_rnas.append(rna)
+        else:
+            accepted_rnas.append(rna)
+
+    #accepted_rnas = set(rnas) - set(unaccepted_rnas)
+
+    # extract RNAs containing pseudoknots
+    with open(log_file, 'r') as f:
+        lines=f.readlines()
+
+    pseudo_rnas = [line.split()[5] for line in lines if 'has pseudoknots' in line ]
+    accepted_pseudo=set(accepted_rnas) & set(pseudo_rnas)
+
+    nopseudo_rnas=set(rnas)-set(pseudo_rnas)
+    accepted_nopseudo=set(accepted_rnas) & set(nopseudo_rnas)
+
+    return accepted_rnas, accepted_pseudo, accepted_nopseudo
+
+# control if the right consel file was produced
+def check_issue_consel(dir_consel, rna, suffix):
+    dir_consel_rna=join(dir_consel, rna)
+
+    for file in os.listdir(dir_consel_rna):
+        if suffix in file:
+            return rna
+
 
 def main():
-    # IQTREE_EXECUTE = '/Users/u7875558/Documents/PhD/tools/iqtree-2.2.2.6-MacOSX/bin/iqtree2'
     RAXML_EXECUTE = '/Users/u7875558/Documents/PhD/tools/standard-RAxML-master/raxmlHPC'
     #log_filename = os.path.join(paths['logs'], f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log")
     log_path=create_directory(DIR_OUTPUTS, 'logs')
     log_filename=join(log_path, f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log")
     logging.basicConfig(filename=log_filename, level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
-    overlapping_pseudo_rnas = ['RF01833']
-    overlapping_nopseudo_rnas = ['RF00740', 'RF00341', 'RF01899', 'RF00958', 'RF00872', 'RF00987', 'RF04090', 'RF02613',
-                                 'RF00319', 'RF02451', 'RF00758', 'RF00877', 'RF01002', 'RF04121', 'RF03283', 'RF01007',
-                                 'RF01383', 'RF03414', 'RF00723', 'RF02725', 'RF01038', 'RF00870', 'RF04290', 'RF01903',
-                                 'RF00119', 'RF04076', 'RF04250', 'RF01014', 'RF00433', 'RF00769', 'RF03029', 'RF00807',
-                                 'RF02610', 'RF02724', 'RF00725', 'RF03292', 'RF01902']
+    #overlapping_pseudo_rnas = ['RF01833']
+    #overlapping_nopseudo_rnas = ['RF00740', 'RF00341', 'RF01899', 'RF00958', 'RF00872', 'RF00987', 'RF04090', 'RF02613',
+    #                             'RF00319', 'RF02451', 'RF00758', 'RF00877', 'RF01002', 'RF04121', 'RF03283', 'RF01007',
+    #                             'RF01383', 'RF03414', 'RF00723', 'RF02725', 'RF01038', 'RF00870', 'RF04290', 'RF01903',
+    #                             'RF00119', 'RF04076', 'RF04250', 'RF01014', 'RF00433', 'RF00769', 'RF03029', 'RF00807',
+    #                             'RF02610', 'RF02724', 'RF00725', 'RF03292', 'RF01902']
 
-    # the .sto files are not all downloaded
+    # Take 500 random RNA families which do not have pseudoknots
+    SEED_LOG_FILE='/Users/u7875558/Library/CloudStorage/OneDrive-AustralianNationalUniversity/Documents/PhD/Rfam/RfamPhylo/analysis/outputs/results/tmp/logs/2024-07-25_13-41-00.log'
+    SEED_ROOT_FOLDER='/Users/u7875558/Library/CloudStorage/OneDrive-AustralianNationalUniversity/Documents/PhD/Rfam/RfamPhylo/analysis/outputs/results/results_RAxMLs/outputs'
+    nopseudo_rnas=list(extractAnalysedRNAs(SEED_ROOT_FOLDER, SEED_LOG_FILE, SEED_SUBFOLDERS)[2])
+    print(nopseudo_rnas)
+    analysed_nopseudo_rnas=nopseudo_rnas[:500]
+
     # This section is aimed to download only required files
-    dir_sto = create_directory(DIR_DATA, 'full_alignments')
+    dir_sto = create_directory(DIR_DATA, '500_full_alignments')
 
-    for rf in overlapping_nopseudo_rnas:
+    for rf in analysed_nopseudo_rnas:
         if not os.path.isfile(join(dir_sto, f'{rf}.sto')):
             url = f'https://ftp.ebi.ac.uk/pub/databases/Rfam/CURRENT/full_alignments/{rf}.sto'
             subprocess.run(['wget', url, '-P', dir_sto])
@@ -249,9 +308,9 @@ def main():
                                                                             rf)
 
         if nodup_fasta and paired_pseudo_ss and unpaired_pseudo_ss:
-            raxml_prefix = join(DIR_OUTPUTS, 'raxml', rf)
-            raxml_paired_pseudo_prefix = join(DIR_OUTPUTS, 'raxml_wPseu', rf)
-            raxml_unpaired_pseudo_prefix = join(DIR_OUTPUTS, 'raxml_iPseu', rf)
+            raxml_prefix = join(DIR_OUTPUTS, '500_full_alignments', 'raxml', rf)
+            raxml_paired_pseudo_prefix = join(DIR_OUTPUTS, '500_full_alignments', 'raxml_wPseu', rf)
+            raxml_unpaired_pseudo_prefix = join(DIR_OUTPUTS, '500_full_alignments', 'raxml_iPseu', rf)
 
             raxml_command = f"bash bashFiles/raxml.sh {rf} {nodup_fasta} {raxml_prefix} {RAXML_EXECUTE}"
             raxml_unpaired_pseudo_command = f"bash bashFiles/raxmlP.sh {rf} {nodup_fasta} {unpaired_pseudo_ss} {raxml_unpaired_pseudo_prefix} {RAXML_EXECUTE}"
