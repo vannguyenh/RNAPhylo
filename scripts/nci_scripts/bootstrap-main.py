@@ -288,8 +288,7 @@ def main():
 
     # This section is aimed to download only required files
     dir_sto = PATHS['data/sto']
-    dir_output = PATHS['outputs_analysis']
-    downloaded_files = []
+    dir_output = os.path.join(PATHS['outputs_analysis'], subproject)
     missing_files = []
 
     # Download all required files first
@@ -311,23 +310,20 @@ def main():
                 logging.info(f"✅ Succesfully downloaded {rf}.sto")
             else:
                 logging.error(f"❌ Failed to download {rf}.sto")
-                #failed_downloads.append{rf}
+                missing_files.append(rf)
                 continue
         else:
             logging.warning(f"{rf}.sto does not exist onthe full-alignment database.")
-            failed_downloads.append(rf)
+            missing_files.append(rf)
             continue
-
-    if failed_downloads:
-        logging.info(f"\n🚨 The following files failed to download or were missing: {failed_downloads}")
-    else:
-        logging.info("✅ All files processed successfully.")
 
     for rf in analysed_nopseudo_rnas:
         sto_file=os.path.join(dir_sto, f'{rf}.sto')
         if os.path.isfile(sto_file):
-            nodup_fasta, paired_pseudo_ss, unpaired_pseudo_ss = parseFastaAndSS(sto_file, PATHS['data/fasta'],
-                                                                                PATHS['data/converted_ss'], rf)
+            nodup_fasta, paired_pseudo_ss, unpaired_pseudo_ss = parseFastaAndSS(sto_file,
+                                                                                PATHS['data/fasta'],
+                                                                                PATHS['data/converted_ss'],
+                                                                                rf)
 
             if nodup_fasta and paired_pseudo_ss and unpaired_pseudo_ss:
                 raxml_prefix = os.path.join(dir_output, 'raxml', rf)
