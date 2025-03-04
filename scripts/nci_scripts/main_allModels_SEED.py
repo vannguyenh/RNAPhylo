@@ -266,7 +266,7 @@ def main():
             #iqtree_prefix = os.path.join(paths['outputs'], 'iqtree', rf)
             raxml_prefix = os.path.join(paths['outputs'], MODEL, 'raxml', rf)
             raxml_brackets_prefix = os.path.join(paths['outputs'], MODEL, 'raxmlP_wPseu', rf)
-            #raxml_dots_prefix = os.path.join(paths['outputs'], MODEL, 'raxmlP_iPseu', rf)
+            raxml_dots_prefix = os.path.join(paths['outputs'], MODEL, 'raxmlP_iPseu', rf)
 
             if not os.path.isdir(raxml_prefix) or len(os.listdir(raxml_prefix))!=50:
                 logging.warning(f"")
@@ -284,14 +284,14 @@ def main():
                     f"bash bashFiles/raxmlP.sh {rf} {nodup_fasta} {brackets_ss} {raxml_brackets_prefix} {MODEL} {RAXML_EXECUTE}"
                 )
                 run_command(raxml_brackets_command)
-"""
-            if len(os.listdir(raxml_dots_prefix)) !=50:
+
+            if not os.path.isdir(raxml_brackets_prefix) or len(os.listdir(raxml_dots_prefix)) !=50:
                 raxml_dots_command = (
                     f"qsub -V -N raxmlP_dot_{rf} -o {paths['logs']} -e {paths['logs']} "
                     f"-l ncpus=24 -l mem=96gb -l walltime=48:00:00 -l wd -- "
                     f"bash bashFiles/raxmlP.sh {rf} {nodup_fasta} {dots_ss}{raxml_dots_prefix} {MODEL} {RAXML_EXECUTE}"
                 )
                 run_command(raxml_dots_command)
-"""
+
 if __name__ == "__main__":
     main()
