@@ -269,10 +269,10 @@ def main():
             raxml_dots_prefix = os.path.join(paths['outputs'], MODEL, 'raxmlP_iPseu', rf)
 
             if not os.path.isdir(raxml_prefix) or len(os.listdir(raxml_prefix))!=50:
-                logging.warning(f"")
+                logging.warning(f"{raxml_prefix} has not been run or not run enough for 10 trees.")
                 raxml_command = (
                     f"qsub -V -N raxml_{rf} -o {log_filename} -e {log_filename} "
-                    f"-l ncpus=24 -l mem=96gb -l walltime=48:00:00 -l wd -- "
+                    f"-l ncpus=12 -l mem=48gb -l walltime=48:00:00 -l wd -- "
                     f"bash bashFiles/raxml.sh {rf} {nodup_fasta} {raxml_prefix} {MODEL} {RAXML_EXECUTE}"
                 )
                 run_command(raxml_command)
