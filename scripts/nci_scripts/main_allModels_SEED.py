@@ -278,12 +278,12 @@ def main():
 
     for rf in RFs:
         section_file = os.path.join(paths['inputs/sections'], f"{rf}.section")
-        nodup_fasta, brackets_ss, dots_ss = parseFastaAndSS(section_file, paths['inputs/fasta_files'], paths['inputs/ss_files'])
+        nodup_fasta, considerPseu_ss, ignorePseu_ss = parseFastaAndSS(section_file, paths['inputs/fasta_files'], paths['inputs/ss_files'])
 
-        if nodup_fasta and brackets_ss and dots_ss:
+        if nodup_fasta and considerPseu_ss  and ignorePseu_ss:
             raxml_prefix = os.path.join(paths['outputs'], MODEL, 'raxml', rf)
-            raxml_brackets_prefix = os.path.join(paths['outputs'], MODEL, 'raxmlP_wPseu', rf)
-            raxml_dots_prefix = os.path.join(paths['outputs'], MODEL, 'raxmlP_iPseu', rf)
+            raxml_considerPseu_prefix = os.path.join(paths['outputs'], MODEL, 'raxmlP_wPseu', rf)
+            raxml_ignorePseu_prefix = os.path.join(paths['outputs'], MODEL, 'raxmlP_iPseu', rf)
 
             if not os.path.isdir(raxml_prefix) or len(os.listdir(raxml_prefix))!=50:
                 logging.warning(f"{raxml_prefix} has not been run or not run enough for 10 trees.")
@@ -291,23 +291,23 @@ def main():
                     dna_command(rf, log_filename, nodup_fasta, raxml_prefix, model=MODEL, raxml=RAXML_EXECUTE)
                 )
 
-            if brackets_ss != dots_ss:
-                if not os.path.isdir(raxml_brackets_prefix) or len(os.listdir(raxml_brackets_prefix))!=50:
+            if considerPseu_ss != ignorePseu_ss:
+                if not os.path.isdir(raxml_considerPseu_prefix) or len(os.listdir(raxml_considerPseu_prefix))!=50:
                     run_command(
-                        rna_command(rf, log_filename, nodup_fasta, raxml_brackets_prefix,
-                                    model=MODEL, raxml=RAXML_EXECUTE, rna_structure=brackets_ss)
+                        rna_command(rf, log_filename, nodup_fasta, raxml_considerPseu_prefix,
+                                    model=MODEL, raxml=RAXML_EXECUTE, rna_structure=considerPseu_ss)
                     )
 
-                if not os.path.isdir(raxml_brackets_prefix) or len(os.listdir(raxml_dots_prefix)) !=50:
+                if not os.path.isdir(raxml_ignorePseu_prefix) or len(os.listdir(raxml_ignorePseu_prefix)) !=50:
                     run_command(
-                        rna_command(rf, log_filename, nodup_fasta, raxml_dots_prefix,
-                                    model=MODEL, raxml=RAXML_EXECUTE, rna_structure=dots_ss)
+                        rna_command(rf, log_filename, nodup_fasta, raxml_ignorePseu_prefix,
+                                    model=MODEL, raxml=RAXML_EXECUTE, rna_structure=ignorePseu_ss)
                     )
             else:
-                if not os.path.isdir(raxml_brackets_prefix) or len(os.listdir(raxml_dots_prefix)) !=50:
+                if not os.path.isdir(raxml_ignorePseu_prefix) or len(os.listdir(raxml_ignorePseu_prefix)) !=50:
                     run_command(
-                        rna_command(rf, log_filename, nodup_fasta, raxml_dots_prefix,
-                                    model=MODEL, raxml=RAXML_EXECUTE, rna_structure=dots_ss)
+                        rna_command(rf, log_filename, nodup_fasta, raxml_ignorePseu_prefix,
+                                    model=MODEL, raxml=RAXML_EXECUTE, rna_structure=ignorePseu_ss)
                     )
 
 if __name__ == "__main__":
