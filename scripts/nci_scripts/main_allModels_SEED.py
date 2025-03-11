@@ -1,9 +1,5 @@
 import os
-import os
 import subprocess
-import pandas as pd
-import logging
-from datetime import datetime
 import pandas as pd
 import logging
 from datetime import datetime
@@ -20,22 +16,22 @@ def create_directories(base_dir, sub_dirs):
     return paths
 
 def parseData_Table(fp_seedfile, fp_table):
-    tdata=[]
-    opening_brackets=set(dict(MATCHING_PSEUDOKNOTS.items()|MATCHING_BRACKETS.items()).values())
+    tdata = []
+    opening_brackets = set( dict(MATCHING_PSEUDOKNOTS.items() | MATCHING_BRACKETS.items()).values())
     with open(fp_seedfile, "r", encoding="utf-8", errors="ignore") as f:
         ac, id, sq, si, ss = None, None, None, None, None
         for line in f:
             if line.startswith("#=GF AC"):
-                ac=line.split()[2]
+                ac = line.split()[2]
             elif line.startswith("#=GF ID"):
-                id=line.split(maxsplit=2)[2].strip()
+                id = line.split(maxsplit=2)[2].strip()
             elif line.startswith("#=GF SQ"):
-                sq=int(line.split()[2])
+                sq = int(line.split()[2])
             elif line.startswith("#=GC SS_cons"):
-                ss=line.split(maxsplit=2)[2].strip()
-                char_ss=set(ss)
+                ss = line.split(maxsplit=2)[2].strip()
+                char_ss = set(ss)
                 if len(char_ss.intersection(opening_brackets)) == 0:
-                    ss=None
+                    ss = None
             elif not line.startswith('#') and line.strip():
                 parts = line.split()
                 if len(parts) == 2:
@@ -80,7 +76,6 @@ def extract_ac(section):
     return None
 
 def parseFastaAndSS(fp_section, fasta_dir, ss_dir):
-    #ac = extract_ac(fp_section)
     with open(fp_section, "r") as file:
         lines = file.readlines()
         ac=extract_ac("\n".join(lines))
@@ -235,11 +230,34 @@ def find_fully_closed_brackets(substring):
                 stack.clear()
     return list(fully_closed)
 
+def dna_command(rf, logfile, nodup_fasta, po_prefix, model, raxml):
+    command = (
+            f"qsub -V -N raxml_{rf} -o {logfile} -e {logfile} "
+            f"-l ncpus=12 -l mem=48gb -l walltime=48:00:00 -l wd -- "
+            f"bash /scratch/dx61/vh5686/tmp/RNAPhylo/scripts/bashFiles/raxml.sh {rf} {nodup_fasta} {po_prefix} {model} {raxml}"
+    )
+    return command
+
+def rna_command(rf, logfile, nodup_fasta, po_prefix, model, raxml, rna_structure):
+    command = (
+        f"qsub -V -N raxmlP_rna_{rf} -o {logfile} -e {logfile} "
+        f"-l ncpus=24 -l mem=96gb -l walltime=48:00:00 -l wd -- "
+        f"bash /scratch/dx61/vh5686/tmp/RNAPhylo/scripts/bashFiles/raxmlP.sh {rf} {nodup_fasta} {rna_structure} {po_prefix} {model} {raxml}"
+    )
+    return command
+
 def run_command(command):
     process = subprocess.Popen(command, shell=True)
     process.communicate()
 
 def main():
+    """
+    running the raxml command lines for DNA and RNA models
+    the case of ignoring pseudoknots contains all rna structures
+    the case of considering pseudoknots contains only RNA having pseudoknots in their consensus structures.
+    Expectedly, ignore_pseudoknots have 2260 RNAs, and consider_pseudoknots should have much fewer
+    :return:
+    """
     RAXML_EXECUTE = '/scratch/dx61/vh5686/tmp/RNAPhylo/tools/standard-RAxML/raxmlHPC'
     RFAM_SEED = '/scratch/dx61/vh5686/tmp/RNAPhylo/full_models_SEED/inputs/Rfam.seed'
 
@@ -263,35 +281,34 @@ def main():
         nodup_fasta, brackets_ss, dots_ss = parseFastaAndSS(section_file, paths['inputs/fasta_files'], paths['inputs/ss_files'])
 
         if nodup_fasta and brackets_ss and dots_ss:
-            #iqtree_prefix = os.path.join(paths['outputs'], 'iqtree', rf)
             raxml_prefix = os.path.join(paths['outputs'], MODEL, 'raxml', rf)
             raxml_brackets_prefix = os.path.join(paths['outputs'], MODEL, 'raxmlP_wPseu', rf)
             raxml_dots_prefix = os.path.join(paths['outputs'], MODEL, 'raxmlP_iPseu', rf)
 
-            # if not os.path.isdir(raxml_prefix) or len(os.listdir(raxml_prefix))!=50:
-            #     logging.warning(f"{raxml_prefix} has not been run or not run enough for 10 trees.")
-            #     raxml_command = (
-            #         f"qsub -V -N raxml_{rf} -o {log_filename} -e {log_filename} "
-            #         f"-l ncpus=12 -l mem=48gb -l walltime=48:00:00 -l wd -- "
-            #         f"bash /scratch/dx61/vh5686/tmp/RNAPhylo/scripts/bashFiles/raxml.sh {rf} {nodup_fasta} {raxml_prefix} {MODEL} {RAXML_EXECUTE}"
-            #     )
-            #     run_command(raxml_command)
-
-            if not os.path.isdir(raxml_brackets_prefix) or len(os.listdir(raxml_brackets_prefix))!=50:
-                raxml_brackets_command = (
-                    f"qsub -V -N raxmlP_br_{rf} -o {paths['logs']} -e {paths['logs']} "
-                    f"-l ncpus=24 -l mem=96gb -l walltime=48:00:00 -l wd -- "
-                    f"bash /scratch/dx61/vh5686/tmp/RNAPhylo/scripts/bashFiles/raxmlP.sh {rf} {nodup_fasta} {brackets_ss} {raxml_brackets_prefix} {MODEL} {RAXML_EXECUTE}"
+            if not os.path.isdir(raxml_prefix) or len(os.listdir(raxml_prefix))!=50:
+                logging.warning(f"{raxml_prefix} has not been run or not run enough for 10 trees.")
+                run_command(
+                    dna_command(rf, log_filename, nodup_fasta, raxml_prefix, model=MODEL, raxml=RAXML_EXECUTE)
                 )
-                run_command(raxml_brackets_command)
 
-            # if not os.path.isdir(raxml_brackets_prefix) or len(os.listdir(raxml_dots_prefix)) !=50:
-            #     raxml_dots_command = (
-            #         f"qsub -V -N raxmlP_dot_{rf} -o {paths['logs']} -e {paths['logs']} "
-            #         f"-l ncpus=24 -l mem=96gb -l walltime=48:00:00 -l wd -- "
-            #         f"bash /scratch/dx61/vh5686/tmp/RNAPhylo/scripts/bashFiles/raxmlP.sh {rf} {nodup_fasta} {dots_ss}{raxml_dots_prefix} {MODEL} {RAXML_EXECUTE}"
-            #     )
-            #     run_command(raxml_dots_command)
+            if brackets_ss != dots_ss:
+                if not os.path.isdir(raxml_brackets_prefix) or len(os.listdir(raxml_brackets_prefix))!=50:
+                    run_command(
+                        rna_command(rf, log_filename, nodup_fasta, raxml_brackets_prefix,
+                                    model=MODEL, raxml=RAXML_EXECUTE, rna_structure=brackets_ss)
+                    )
+
+                if not os.path.isdir(raxml_brackets_prefix) or len(os.listdir(raxml_dots_prefix)) !=50:
+                    run_command(
+                        rna_command(rf, log_filename, nodup_fasta, raxml_dots_prefix,
+                                    model=MODEL, raxml=RAXML_EXECUTE, rna_structure=dots_ss)
+                    )
+            else:
+                if not os.path.isdir(raxml_brackets_prefix) or len(os.listdir(raxml_dots_prefix)) !=50:
+                    run_command(
+                        rna_command(rf, log_filename, nodup_fasta, raxml_dots_prefix,
+                                    model=MODEL, raxml=RAXML_EXECUTE, rna_structure=dots_ss)
+                    )
 
 if __name__ == "__main__":
     main()
