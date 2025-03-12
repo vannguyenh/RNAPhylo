@@ -137,8 +137,10 @@ def parse_sections(fp_seedfile: str, rf_list: List[str], po_section: str) -> Non
         return
 
     # Split using regex to capture the deliminter line without losing it
-    sections = re.split(r'(?=# STOCKHOLM 1\.0)', raw_data)
-    sections = [section.strip() for section in sections if sections.strip()]
+    #sections = re.split(r'(?=# STOCKHOLM 1\.0)', raw_data)
+    #sections = [section.strip() for section in sections if sections.strip()]
+    sections = raw_data.split('# STOCKHOLM 1.0')
+    sections = [('# STOCKHOLM 1.0' + section).strip() for section in sections if section.strip()]
 
     for section in sections:
         rf = extract_rf(section)
@@ -396,12 +398,12 @@ def run_command(command: str) -> None:
 # ============================================================================
 
 
-def process_rna_family(rf: str, section_file: str, paths: Dict[str, str], model: str, raxml_exec: str, log_filename: str) -> None:
+def process_rna_family(rf: str, section_file: str, po_fasta, po_ss, model: str, raxml_exec: str, log_filename: str) -> None:
     """
     Processes one RNA family: extracts FASTA, SS files (ignore and consider pseudoknots), build command line,
     and executes the appropriate external commands.
     """
-    nodup_fasta, considerPseu_ss, ignorePseu_ss = parse_fasta_and_ss(section_file, paths['inputs/fasta'],
+    nodup_fasta, considerPseu_ss, ignorePseu_ss = parse_fasta_and_ss(section_file, po_fasta, po_ss,
                                                                      paths['inputs/ss_files'])
     if nodup_fasta and considerPseu_ss and ignorePseu_ss:
         raxml_prefix = os.path.join(paths['outputs'], model, 'raxml', rf)
@@ -413,18 +415,18 @@ def process_rna_family(rf: str, section_file: str, paths: Dict[str, str], model:
         os.makedirs(raxml_considerPseu_prefix, exist_ok=True)
         os.makedirs(raxml_ignorePseu_prefix, exist_ok=True)
 
-        # if not directory_has_enough_files(raxml_prefix, 50):
-        #     logging.warning(f"{raxml_prefix} has not been run enough for 10 trees.")
-        #     run_command(build_dna_command(rf, log_filename, nodup_fasta, raxml_prefix, model, raxml_exec))
+        if not directory_has_enough_files(raxml_prefix, 50):
+            logging.warning(f"{raxml_prefix} has not been run enough for 10 trees.")
+            run_command(build_dna_command(rf, log_filename, nodup_fasta, raxml_prefix, model, raxml_exec))
 
-        if considerPseu_ss != ignorePseu_ss:
-            if not directory_has_enough_files(raxml_considerPseu_prefix, 50):
-                run_command(build_rna_command(rf, log_filename, nodup_fasta, raxml_considerPseu_prefix, model, raxml_exec, considerPseu_ss))
-            if not directory_has_enough_files(raxml_ignorePseu_prefix, 50):
-                run_command(build_rna_command(rf, log_filename, nodup_fasta, raxml_ignorePseu_prefix, model, raxml_exec, ignorePseu_ss))
-        else:
-            if not directory_has_enough_files(raxml_ignorePseu_prefix, 50):
-                run_command(build_rna_command(rf, log_filename, nodup_fasta, raxml_ignorePseu_prefix, model, raxml_exec, ignorePseu_ss))
+        # if considerPseu_ss != ignorePseu_ss:
+        #     if not directory_has_enough_files(raxml_considerPseu_prefix, 50):
+        #         run_command(build_rna_command(rf, log_filename, nodup_fasta, raxml_considerPseu_prefix, model, raxml_exec, considerPseu_ss))
+        #     if not directory_has_enough_files(raxml_ignorePseu_prefix, 50):
+        #         run_command(build_rna_command(rf, log_filename, nodup_fasta, raxml_ignorePseu_prefix, model, raxml_exec, ignorePseu_ss))
+        # else:
+        #     if not directory_has_enough_files(raxml_ignorePseu_prefix, 50):
+        #         run_command(build_rna_command(rf, log_filename, nodup_fasta, raxml_ignorePseu_prefix, model, raxml_exec, ignorePseu_ss))
     else:
         logging.info(f'RNA family {rf} skipped due to missing input files.')
 
@@ -441,7 +443,7 @@ def main() -> None:
     RAXML_EXECUTE = '/scratch/dx61/vh5686/tmp/RNAPhylo/tools/standard-RAxML/raxmlHPC'
     RFAM_SEED = '/scratch/dx61/vh5686/tmp/RNAPhylo/full_models_SEED/inputs/Rfam.seed'
     DIR_WORKING = '/scratch/dx61/vh5686/tmp/RNAPhylo/full_models_SEED'
-    MODEL = 'S16B'
+    MODEL = 'S6A'
     DIR_SUBS = ['inputs', 'outputs', 'logs',
                 'inputs/fasta_files', 'inputs/ss_files', 'inputs/sections']
     paths = create_directories(DIR_WORKING, DIR_SUBS)
