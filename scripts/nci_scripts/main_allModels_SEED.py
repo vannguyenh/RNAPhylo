@@ -78,7 +78,8 @@ def parse_data_table(fp_seedfile: str, fp_table: str) -> pd.DataFrame:
                     if len(parts) >= 3:
                         accession_id = parts[2].strip()
                 elif line.startswith("#=GF SQ"):
-                    parts = int(line.split()[2])
+                    # parts = int(line.split()[2])
+                    parts = line.split()
                     if len(parts) >= 3:
                         try:
                             sq = int(parts[2])
@@ -211,7 +212,7 @@ def parse_fasta_and_ss(fp_section: str, po_fasta: str, po_ss: str) -> Tuple[Opti
                 ss_ignorePseu_path = None
 
             ss_considerPseu_path = os.path.join(po_ss, f'{rna}.considerPseu.ss')
-            ss_considerPseu_structure = convert_pseudoknots_to_brackets(ss_cons, rna)
+            ss_considerPseu_structure = convert_pseudoknots_to_brackets(ss_cons, rna)[0]
             if ss_considerPseu_structure:
                 try:
                     with open(ss_considerPseu_path, 'w', encoding='utf-8') as ss_file:
@@ -310,7 +311,7 @@ def validate_brackets_positions(rna_structure: str) -> Tuple[bool, List[Tuple[in
     Returns a tuple (is_valid, list of pairing positions)
     """
     stacks = {ch: [] for ch in list(MATCHING_BRACKETS.values()) + list(MATCHING_PSEUDOKNOTS.values())}
-    pairing_positions: Dict[str, List[Tuple[int, int]]] = {chr: [] for ch in stacks.keys()}
+    pairing_positions: Dict[str, List[Tuple[int, int]]] = {ch: [] for ch in stacks.keys()}
 
     for i, char in enumerate(rna_structure):
         if char in MATCHING_BRACKETS.values():
@@ -440,14 +441,14 @@ def main() -> None:
     RAXML_EXECUTE = '/scratch/dx61/vh5686/tmp/RNAPhylo/tools/standard-RAxML/raxmlHPC'
     RFAM_SEED = '/scratch/dx61/vh5686/tmp/RNAPhylo/full_models_SEED/inputs/Rfam.seed'
     DIR_WORKING = '/scratch/dx61/vh5686/tmp/RNAPhylo/full_models_SEED'
-    MODEL = 'S16A'
+    MODEL = 'S16B'
     DIR_SUBS = ['inputs', 'outputs', 'logs',
                 'inputs/fasta_files', 'inputs/ss_files', 'inputs/sections']
     paths = create_directories(DIR_WORKING, DIR_SUBS)
 
     # set up logging with a timestamped log file
     log_filename = os.path.join(paths['logs'], f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log")
-    logging.basicConfig(filename=log_filename, level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+    logging.basicConfig(filename=log_filename, level=logging.DEBUG, format=LOG_FORMAT)
     logging.info('Running code with the model S16A!')
 
     # parse the seed file to generate the data table
