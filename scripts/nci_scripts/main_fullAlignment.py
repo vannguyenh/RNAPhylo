@@ -82,7 +82,8 @@ def extract_fasta_and_ss(fi_sto: str, po_fasta: str, po_ss_ignore: str, po_ss_co
             continue
         seq = parts[1].upper().replace('.', '-')
         if seq not in alignments.values():
-            alignments[parts[0]] = seq
+            name = parts[0]
+            alignments[name] = seq
 
     if len(alignments) < 4:
         logging.info(f"Number of sequences of {rf} is less than 4.")
@@ -101,8 +102,8 @@ def extract_fasta_and_ss(fi_sto: str, po_fasta: str, po_ss_ignore: str, po_ss_co
     ss_cons_found = False
     for line in lines:
         if line.startswith('#=GC SS_cons') and not ss_cons_found:
-            parts = line.split(maxsplit=2)
-            if len(parts) >= 3:
+            parts = line.strip().split(maxsplit=2)
+            if len(parts) == 3:
                 ss_cons = parts[2].strip()
                 ss_cons_found = True
 
@@ -122,7 +123,7 @@ def extract_fasta_and_ss(fi_sto: str, po_fasta: str, po_ss_ignore: str, po_ss_co
 
             # If pseudoknot characters are present, convert for considering pseudoknots
             if any(pseudo in ss_unpaired for pseudo in MATCHING_PSEUDOKNOTS.values()):
-                ss_consider, _ = convert_ss_consider_pseudo(ss_ignore)
+                ss_consider, _ = convert_ss_consider_pseudo(ss_unpaired)
                 logging.info(f"{rf} has pseudoknots.")
                 ss_consider_file = join(po_ss_consider, f'{rf}.pseudo.ss')
                 try:
@@ -283,6 +284,7 @@ def main() -> None:
 
     for rf in rf_list:
         sto_file = join(sto_dir, f'{rf}.sto')
+        print(f"Working on {rf} ...")
         if os.path.isfile(sto_file):
             fasta_file, ss_ignore_file, ss_consider_file, nseq, nsite = extract_fasta_and_ss(
                 sto_file,
