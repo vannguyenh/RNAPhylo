@@ -1,4 +1,6 @@
 import os
+from os.path import join
+
 import subprocess
 import pandas as pd
 import logging
@@ -14,6 +16,11 @@ def create_directories(base_dir, sub_dirs):
         os.makedirs(path, exist_ok=True)
         paths[sub_dir] = path
     return paths
+
+def create_directory(base_dir, sub_dir):
+    path = join(base_dir, sub_dir)
+    os.makedirs(path, exist_ok=True)
+    return path
 
 def parseData_Table(fp_seedfile, fp_table):
     tdata = []
@@ -237,17 +244,24 @@ def main():
     RFAM_SEED = '/Users/u7875558/Documents/PhD/RNAPhylo/data/Rfam.seed'
 
     DIR_WORKING = '/Users/u7875558/Documents/PhD/RNAPhylo/allModels_SEED'
-    MODEL = 'S6D'
-    DIR_SUBS = ['inputs', 'outputs', 'logs',
-                'inputs/fasta_files', 'inputs/ss_files', 'inputs/sections']
-    paths = create_directories(DIR_WORKING, DIR_SUBS)
+    MODEL = 'S16'
 
-    log_filename = os.path.join(paths['logs'], f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log")
+    DIR_INPUTS = join(DIR_WORKING, 'nci_inputs')
+    dir_subinputs = {'fa' : create_directory(DIR_INPUTS, 'fasta_files'),
+                     'ss' : create_directory(DIR_INPUTS, 'ss_files'),
+                     'sec': create_directory(DIR_INPUTS, 'sections')}
+    DIR_OUTPUTS = join(DIR_WORKING, 'outputs')
+    DIR_LOGS = join(DIR_WORKING, 'logs')
+
+    paths = create_directories(DIR_INPUTS, dir_subinputs)
+
+    log_filename = os.path.join(DIR_LOGS, f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.missing.{MODEL}.log")
     logging.basicConfig(filename=log_filename, level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
-    logging.info('Running code with the model S16A!')
+    logging.info(f'Running code with the model {MODEL}!')
 
 
-    rfam_table = parseData_Table(RFAM_SEED, os.path.join(paths['inputs'], 'Rfam.full.seed.tbl'))
+    #rfam_table = parseData_Table(RFAM_SEED, join(DIR_INPUTS, 'Rfam.full.seed.tbl'))
+    rfam_table = pd.read_table(join(DIR_INPUTS, 'Rfam.full.seed.tbl'))
     RFs = rfam_table["AC"].unique().tolist()
     # S16: raxml: ['RF00044', 'RF04302', 'RF04305', 'RF04303', 'RF04310', 'RF01380', 'RF01338', 'RF04306', 'RF04308', 'RF01047', 'RF04309', 'RF04307', 'RF00390', 'RF03760', 'RF03969', 'RF00976', 'RF03623', 'RF01510']
 
@@ -256,17 +270,17 @@ def main():
     # missing_rfs = ['RF00044', 'RF04302', 'RF04305', 'RF04303', 'RF04310', 'RF01380', 'RF01338', 'RF04306', 'RF04308',
     #               'RF01047', 'RF04309', 'RF04307', 'RF00390', 'RF03760', 'RF03969', 'RF00976', 'RF03623', 'RF01510',
     #               'RF02060']
-    parse_sections(RFAM_SEED, RFs, paths['inputs/sections'])
+    #parse_sections(RFAM_SEED, RFs, dir_subinputs['sec'])
 
     for rf in RFs:
-        section_file = os.path.join(paths['inputs/sections'], f"{rf}.section")
-        nodup_fasta, brackets_ss, dots_ss = parseFastaAndSS(section_file, paths['inputs/fasta_files'], paths['inputs/ss_files'])
+        section_file = os.path.join(dir_subinputs['sec'], f"{rf}.section")
+        nodup_fasta, brackets_ss, dots_ss = parseFastaAndSS(section_file, dir_subinputs['fa'], dir_subinputs['ss'])
 
         if nodup_fasta and brackets_ss and dots_ss:
             #iqtree_prefix = os.path.join(paths['outputs'], 'iqtree', rf)
-            raxml_prefix = os.path.join(paths['outputs'], MODEL, 'raxml', rf)
-            raxml_brackets_prefix = os.path.join(paths['outputs'], MODEL, 'raxmlP_wPseu', rf)
-            raxml_dots_prefix = os.path.join(paths['outputs'], MODEL, 'raxmlP_iPseu', rf)
+            raxml_prefix = os.path.join(DIR_OUTPUTS, MODEL, 'raxml', rf)
+            raxml_brackets_prefix = os.path.join(DIR_OUTPUTS, MODEL, 'raxmlP_wPseu', rf)
+            raxml_dots_prefix = os.path.join(DIR_OUTPUTS, MODEL, 'raxmlP_iPseu', rf)
 
             if not os.path.isdir(raxml_prefix) or len(os.listdir(raxml_prefix)) != 50:
                 run_command(f"rm -r {raxml_prefix}")
@@ -288,12 +302,13 @@ def main():
                 run_command(raxml_brackets_command)
 
             if not os.path.isdir(raxml_dots_prefix) or len(os.listdir(raxml_dots_prefix)) !=50:
-               raxml_dots_command = (
+                run_command(f"rm -r {raxml_dots_prefix}")
+                raxml_dots_command = (
                     #f"qsub -V -N raxmlP_dot_{rf} -o {paths['logs']} -e {paths['logs']} "
                     #f"-l ncpus=24 -l mem=96gb -l walltime=48:00:00 -l wd -- "
                     f"bash /Users/u7875558/Documents/PhD/RNAPhylo/scripts/nci_scripts/bashFiles/raxmlP.sh {rf} {nodup_fasta} {dots_ss} {raxml_dots_prefix} {MODEL} {RAXML_EXECUTE}"
                )
-               run_command(raxml_dots_command)
+                run_command(raxml_dots_command)
 
 if __name__ == "__main__":
     main()
