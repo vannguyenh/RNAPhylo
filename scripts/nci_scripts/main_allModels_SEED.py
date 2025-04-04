@@ -278,11 +278,11 @@ def main():
             #    )
             #    run_command(raxml_brackets_command)
 
-            # if not os.path.isdir(raxml_brackets_prefix) or len(os.listdir(raxml_dots_prefix)) !=50:
+            # if not os.path.isdir(raxml_dots_prefix) or len(os.listdir(raxml_dots_prefix)) !=50:
             #     raxml_dots_command = (
             #         f"qsub -V -N raxmlP_dot_{rf} -o {paths['logs']} -e {paths['logs']} "
             #         f"-l ncpus=24 -l mem=96gb -l walltime=48:00:00 -l wd -- "
-            #         f"bash /scratch/dx61/vh5686/tmp/RNAPhylo/scripts/bashFiles/raxmlP.sh {rf} {nodup_fasta} {dots_ss}{raxml_dots_prefix} {MODEL} {RAXML_EXECUTE}"
+            #         f"bash /scratch/dx61/vh5686/tmp/RNAPhylo/scripts/bashFiles/raxmlP.sh {rf} {nodup_fasta} {dots_ss} {raxml_dots_prefix} {MODEL} {RAXML_EXECUTE}"
             #     )
             #     run_command(raxml_dots_command)
 
