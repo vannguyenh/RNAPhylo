@@ -63,7 +63,7 @@ def extractAnalysedRNAs(diroutput, log_file):
     
     return accepted_rnas, accepted_pseudo, accepted_nopseudo
 
-def produceCombinedTrees(dir_input, dir_output):
+def produceCombinedTrees(dir_input, dir_output, rna):
     os.makedirs(dir_output, exist_ok=True)
     # endings for output files
     endings={
@@ -74,24 +74,24 @@ def produceCombinedTrees(dir_input, dir_output):
 
     # List all files in the input directory
     methods = list(endings.keys())
-    rnas = os.listdir(os.path.join(dir_input, methods[0]))
+    #rnas = os.listdir(os.path.join(dir_input, methods[0]))
     for method in methods:
-        for rna in rnas:
-            input_method = os.path.join(dir_input, method, rna)
-            input_files = sorted([f for f in os.listdir(input_method) if f.startswith("RAxML_bestTree.")])
+        #for rna in rnas:
+        input_method = os.path.join(dir_input, method, rna)
+        input_files = sorted([f for f in os.listdir(input_method) if f.startswith("RAxML_bestTree.")])
 
-            if len(input_files) == 0:
-                logging.warning(f"{rna} of {method} does not have tree files.")
-            else:
-                output_rna=os.path.join(dir_output, rna)
-                os.makedirs(output_rna, exist_ok=True)
-                output_file=os.path.join(output_rna, f"{rna}.{endings[method]}")
-                with open(output_file, "w") as outfile:
-                    for filename in input_files:
-                        file_path = os.path.join(input_method, filename)
-                        with open(file_path, "r") as infile:
-                            content = infile.read()
-                            outfile.write(content)
+        if len(input_files) == 0:
+            logging.warning(f"{rna} of {method} does not have tree files.")
+        else:
+            output_rna=os.path.join(dir_output, rna)
+            os.makedirs(output_rna, exist_ok=True)
+            output_file=os.path.join(output_rna, f"{rna}.{endings[method]}")
+            with open(output_file, "w") as outfile:
+                for filename in input_files:
+                    file_path = os.path.join(input_method, filename)
+                    with open(file_path, "r") as infile:
+                        content = infile.read()
+                        outfile.write(content)
 
 def run_command(command):
     try:
@@ -100,21 +100,21 @@ def run_command(command):
     except Exception as e:
         logging.error(f"Command failed: {command} with error: {e}")
 
-def computeRFdistance_iqtreecmd(dcombine_path, rnas):
+def computeRFdistance_iqtreecmd(dcombine_path, rna):
     #rnas=os.listdir(dcombine_path)
-    for rna in rnas:
-        dir_combine_rna = os.path.join(dcombine_path, rna)
-        for f in os.listdir(dir_combine_rna):
-            if f.endswith("raxml"):
-                raxTree = os.path.join(dir_combine_rna, f)
-            elif f.endswith("raxmlPw"):
-                raxPwPTree = os.path.join(dir_combine_rna, f)
-            elif f.endswith("raxmlPi"):
-                raxPiPTree = os.path.join(dir_combine_rna, f)
+    #for rna in rnas:
+    dir_combine_rna = os.path.join(dcombine_path, rna)
+    for f in os.listdir(dir_combine_rna):
+        if f.endswith("raxml"):
+            raxTree = os.path.join(dir_combine_rna, f)
+        elif f.endswith("raxmlPw"):
+            raxPwPTree = os.path.join(dir_combine_rna, f)
+        elif f.endswith("raxmlPi"):
+            raxPiPTree = os.path.join(dir_combine_rna, f)
         #prefix=f"{dcombine_path}/{rna}/"
-        logging.info(f"Compute the RF distances of {rna}.")
-        command=f"bash computeRFdistance.sh {raxTree} {raxPwPTree} {raxPiPTree} {dir_combine_rna} {rna}"
-        run_command(command)
+    logging.info(f"Compute the RF distances of {rna}.")
+    command=f"bash computeRFdistance.sh {raxTree} {raxPwPTree} {raxPiPTree} {dir_combine_rna} {rna}"
+    run_command(command)
 
 def main():
     MODEL = input('Model: ')
@@ -125,11 +125,23 @@ def main():
     logging.info(f"Running the code with the model {MODEL}.")
 
     rnas, pseudo_rnas, nopseudo_rnas = extractAnalysedRNAs(join(DIR_OUTPUTS, MODEL), LOG_FILE)
+    issue_str_rnas = ['RF00207', 'RF00390', 'RF01380', 'RF01338', 'RF01047', 'RF03760', 'RF03969', 'RF00976', 'RF03623']
+    working_rnas = set(rnas) - set(issue_str_rnas)
 
-    produceCombinedTrees(os.path.join(DIR_OUTPUTS, MODEL), dir_combined)
-    computeRFdistance_iqtreecmd(dir_combined, rnas)
+    for rna in working_rnas:
+        path = os.path.join(dir_combined, rna)
+        rfdist_file = 0
+        if os.path.isdir(path):
+            for f in os.listdir(path):
+                if f.endswith('.rfdist'):
+                    rfdist_file += 1
+
+        if rfdist_file != 6:
+            run_command(f"rm -r {path}")
+            produceCombinedTrees(os.path.join(DIR_OUTPUTS, MODEL), dir_combined, rna)
+            computeRFdistance_iqtreecmd(dir_combined, rna)
+        else:
+            continue
 
 if __name__=="__main__":
     main()
-
-
