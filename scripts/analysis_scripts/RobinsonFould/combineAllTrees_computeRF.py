@@ -12,6 +12,7 @@ LOG_FORMAT = '%(asctime)s - %(levelname)s - %(message)s'
 DIR_WORKING = "/Users/u7875558/Documents/PhD/RNAPhylo/allModels_SEED/"
 DIR_OUTPUTS = os.path.join(DIR_WORKING, "outputs")
 DIR_RF_LOGS = os.path.join(DIR_WORKING, 'logs', 'RF_distance')
+DIR_DNA = '/Users/u7875558/Documents/PhD/RNAPhylo/allModels_SEED/outputs/DNAtrees'
 os.makedirs(DIR_RF_LOGS, exist_ok=True)
 
 LOG_FILE = join(DIR_WORKING, 'logs/2025-03-24_11-55-45.log')
@@ -38,15 +39,14 @@ def check_branch_length(diroutput, rna):
 def extractAnalysedRNAs(diroutput, log_file):
     # This function produces two sets of accepted RNAs -- RNAs containing pseudoknots and RNAs containing no pseudoknots    
     # extract accepted RNAs which do not have any branch length > 1
-    rnas = os.listdir(join(diroutput, SUBFOLDERS[0]))
+    rnas = os.listdir(DIR_DNA)
     
     unaccepted_rnas=list()
     accepted_rnas=list()
     
     for rna in rnas:
         # consider only the outputs from using DNA
-        dir_working = join(diroutput, SUBFOLDERS[0])
-        if check_branch_length(dir_working, rna) == rna:
+        if check_branch_length(DIR_DNA, rna) == rna:
             unaccepted_rnas.append(rna)
         else:
             accepted_rnas.append(rna)
@@ -68,7 +68,7 @@ def produceCombinedTrees(dir_input, dir_output, rna):
     # endings for output files
     endings={
         "raxml": "raxml",
-        "raxmlP_wPseu": "raxmlPw",
+        #"raxmlP_wPseu": "raxmlPw",
         "raxmlP_iPseu" : "raxmlPi"
     }
 
@@ -77,15 +77,18 @@ def produceCombinedTrees(dir_input, dir_output, rna):
     #rnas = os.listdir(os.path.join(dir_input, methods[0]))
     for method in methods:
         #for rna in rnas:
-        input_method = os.path.join(dir_input, method, rna)
+        if method == 'raxml':
+            input_method = join(DIR_DNA, rna)
+        else:
+            input_method = os.path.join(dir_input, method, rna)
         input_files = sorted([f for f in os.listdir(input_method) if f.startswith("RAxML_bestTree.")])
 
         if len(input_files) == 0:
             logging.warning(f"{rna} of {method} does not have tree files.")
         else:
-            output_rna=os.path.join(dir_output, rna)
+            output_rna = os.path.join(dir_output, rna)
             os.makedirs(output_rna, exist_ok=True)
-            output_file=os.path.join(output_rna, f"{rna}.{endings[method]}")
+            output_file = os.path.join(output_rna, f"{rna}.{endings[method]}")
             with open(output_file, "w") as outfile:
                 for filename in input_files:
                     file_path = os.path.join(input_method, filename)
@@ -107,26 +110,28 @@ def computeRFdistance_iqtreecmd(dcombine_path, rna):
     for f in os.listdir(dir_combine_rna):
         if f.endswith("raxml"):
             raxTree = os.path.join(dir_combine_rna, f)
-        elif f.endswith("raxmlPw"):
-            raxPwPTree = os.path.join(dir_combine_rna, f)
+        #elif f.endswith("raxmlPw"):
+        #    raxPwPTree = os.path.join(dir_combine_rna, f)
         elif f.endswith("raxmlPi"):
             raxPiPTree = os.path.join(dir_combine_rna, f)
-        #prefix=f"{dcombine_path}/{rna}/"
     logging.info(f"Compute the RF distances of {rna}.")
-    command=f"bash computeRFdistance.sh {raxTree} {raxPwPTree} {raxPiPTree} {dir_combine_rna} {rna}"
+    #command=f"bash /Users/u7875558/Documents/PhD/RNAPhylo/scripts/analysis_scripts/RobinsonFould/computeRFdistance.sh {raxTree} {raxPwPTree} {raxPiPTree} {dir_combine_rna} {rna}"
+    command=f"bash /Users/u7875558/Documents/PhD/RNAPhylo/scripts/analysis_scripts/RobinsonFould/computeRFdistance.sh {raxTree} {raxPiPTree} {dir_combine_rna} {rna}"
     run_command(command)
 
 def main():
     MODEL = input('Model: ')
     dir_combined = os.path.join(DIR_OUTPUTS, 'Robinson_Foulds', MODEL)
+    os.makedirs(dir_combined, exist_ok=True)
 
-    log_filename = os.path.join(DIR_RF_LOGS, f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log")
+    log_filename = os.path.join(DIR_RF_LOGS, f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.{MODEL}.log")
     logging.basicConfig(filename=log_filename, level=logging.DEBUG, format=LOG_FORMAT)
     logging.info(f"Running the code with the model {MODEL}.")
 
     rnas, pseudo_rnas, nopseudo_rnas = extractAnalysedRNAs(join(DIR_OUTPUTS, MODEL), LOG_FILE)
-    issue_str_rnas = ['RF00207', 'RF00390', 'RF01380', 'RF01338', 'RF01047', 'RF03760', 'RF03969', 'RF00976', 'RF03623']
-    working_rnas = set(rnas) - set(issue_str_rnas)
+    # issue_str_rnas: RNA families running with DNA model, but not with RNA models.
+    issue_rnas = ['RF00207', 'RF00390', 'RF00976', 'RF01047', 'RF01338', 'RF01380', 'RF03623', 'RF03760', 'RF03969']
+    working_rnas = set(rnas) - set(issue_rnas)
 
     for rna in working_rnas:
         path = os.path.join(dir_combined, rna)
@@ -136,8 +141,8 @@ def main():
                 if f.endswith('.rfdist'):
                     rfdist_file += 1
 
-        if rfdist_file != 6:
-            run_command(f"rm -r {path}")
+        if rfdist_file != 3: # 3 while using only ramxl and raxmlP_iPseu, 6 while using raxml, raxmlP_iPseu and raxmlP_wPseu
+            #run_command(f"rm -r {path}")
             produceCombinedTrees(os.path.join(DIR_OUTPUTS, MODEL), dir_combined, rna)
             computeRFdistance_iqtreecmd(dir_combined, rna)
         else:
