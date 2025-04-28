@@ -8,6 +8,7 @@ import time
 import subprocess
 
 DIR_OUTPUTS = '/Users/u7875558/Documents/PhD/RNAPhylo/allModels_SEED/outputs'
+DIR_DNA = '/Users/u7875558/Documents/PhD/RNAPhylo/allModels_SEED/outputs/DNAtrees'
 #MODEL = 'S6A'
 
 DIR_INPUTS = '/Users/u7875558/Documents/PhD/RNAPhylo/allModels_SEED/inputs'
@@ -41,13 +42,12 @@ def check_branch_length(diroutput, rna):
 def extractAnalysedRNAs(dirmodel, log_file):
     # This function produces two sets of accepted RNAs -- RNAs containing pseudoknots and RNAs containing no pseudoknots    
     # extract accepted RNAs which do not have any branch length > 1
-    rnas = os.listdir(join(dirmodel, SUBFOLDERS[0]))
+    rnas = os.listdir(DIR_DNA)
     unaccepted_rnas = list()
     accepted_rnas = list()
     for rna in rnas:
         # consider only the outputs from using DNA
-        dir_working = join(dirmodel, SUBFOLDERS[0])
-        if check_branch_length(dir_working, rna) == rna:
+        if check_branch_length(DIR_DNA, rna) == rna:
             #logging.warning(f'{rna} inferred from using DNA has branch length > 1.')
             unaccepted_rnas.append(rna)
         else:
@@ -98,7 +98,7 @@ def extract_highestloglh(dir_path):
     return sorted(lh.items(), key=lambda x: x[1], reverse=True)[0]
 
 def extract_highestLH_2Trees_pseudo(dir_output, rna):
-    raxTree_path = join(dir_output, SUBFOLDERS[0], rna)
+    raxTree_path = join(DIR_DNA, rna)
     raxPTree_path = join(dir_output, SUBFOLDERS[1], rna)
     if check_inferred_tree(raxTree_path) and check_inferred_tree(raxPTree_path):
         bestTreesLH = {'DNA': extract_highestloglh(raxTree_path),
@@ -108,7 +108,7 @@ def extract_highestLH_2Trees_pseudo(dir_output, rna):
         return None
     
 def extract_highestLH_2Trees_ipseudo(dir_output, rna):
-    raxTree_path = join(dir_output, SUBFOLDERS[0], rna)
+    raxTree_path = join(DIR_DNA, rna)
     raxPiTree_path = join(dir_output, SUBFOLDERS[2], rna)
     if check_inferred_tree(raxTree_path) and check_inferred_tree(raxPiTree_path):
         bestTreesLH = {'DNA': extract_highestloglh(raxTree_path),
@@ -156,38 +156,38 @@ def main():
 
     reduced_rnas = ['RF00001', 'RF00177', 'RF01960', 'RF02345', 'RF02401', 'RF02540', 'RF02842', 'RF02976']
     
-    for rna in working_pseu:
-        bestTrees = extract_highestLH_2Trees_pseudo(join(DIR_OUTPUTS, MODEL), rna)
-        if bestTrees is not None:
-            dnaTree = join(DIR_OUTPUTS, MODEL, 'raxml', rna, f"RAxML_bestTree.{rna}.{bestTrees['DNA'][0]}")
-            rnaTree = join(DIR_OUTPUTS, MODEL, 'raxmlP_wPseu', rna, f"RAxML_bestTree.{rna}.{bestTrees['RNA considering pseudoknots'][0]}")
-            combineTreeFiles(DIR_COMBINE, rna, 'wPseu', dnaTree, rnaTree)
+    # for rna in working_pseu:
+    #     bestTrees = extract_highestLH_2Trees_pseudo(join(DIR_OUTPUTS, MODEL), rna)
+    #     if bestTrees is not None:
+    #         dnaTree = join(DIR_OUTPUTS, MODEL, 'raxml', rna, f"RAxML_bestTree.{rna}.{bestTrees['DNA'][0]}")
+    #         rnaTree = join(DIR_OUTPUTS, MODEL, 'raxmlP_wPseu', rna, f"RAxML_bestTree.{rna}.{bestTrees['RNA considering pseudoknots'][0]}")
+    #         combineTreeFiles(DIR_COMBINE, rna, 'wPseu', dnaTree, rnaTree)
 
-            persite_path = join(DIR_WORKING, 'consider_pseudo', rna)
-            os.makedirs(persite_path, exist_ok=True)
-            persite_pseudo_suffix = f'{rna}.wpseu.sitelh'
-            prefix_pseudo_consel = join(persite_path, f'{rna}_wpseu_consel')
+    #         persite_path = join(DIR_WORKING, 'consider_pseudo', rna)
+    #         os.makedirs(persite_path, exist_ok=True)
+    #         persite_pseudo_suffix = f'{rna}.wpseu.sitelh'
+    #         prefix_pseudo_consel = join(persite_path, f'{rna}_wpseu_consel')
             
-            if rna in reduced_rnas:
-                ss_pseudo_file = join(DIR_SS, f'{rna}.brackets.ss.reduced')
-                fasta_file = join(DIR_FASTA, f'{rna}.nodup.fa.reduced')
-            else:
-                ss_pseudo_file = join(DIR_SS, f'{rna}.brackets.ss')
-                fasta_file = join(DIR_FASTA, f'{rna}.nodup.fa')
+    #         if rna in reduced_rnas:
+    #             ss_pseudo_file = join(DIR_SS, f'{rna}.brackets.ss.reduced')
+    #             fasta_file = join(DIR_FASTA, f'{rna}.nodup.fa.reduced')
+    #         else:
+    #             ss_pseudo_file = join(DIR_SS, f'{rna}.brackets.ss')
+    #             fasta_file = join(DIR_FASTA, f'{rna}.nodup.fa')
                 
-            # running consel
-            try:
-                runningCONSEL(rna, MODEL, 'wPseu', fasta_file, ss_pseudo_file, persite_pseudo_suffix, persite_path, prefix_pseudo_consel, DIR_COMBINE)
-                logging.info(f"CONSEL is running with {rna} having pseudoknots.")
-            except Exception as e:
-                logging.error(f"Error with {rna}: {e}")
-        else:
-            logging.warning(f"{rna} considering pseudoknots has issue with the tree files.")
+    #         # running consel
+    #         try:
+    #             runningCONSEL(rna, MODEL, 'wPseu', fasta_file, ss_pseudo_file, persite_pseudo_suffix, persite_path, prefix_pseudo_consel, DIR_COMBINE)
+    #             logging.info(f"CONSEL is running with {rna} having pseudoknots.")
+    #         except Exception as e:
+    #             logging.error(f"Error with {rna}: {e}")
+    #     else:
+    #         logging.warning(f"{rna} considering pseudoknots has issue with the tree files.")
     
     for rna in working_rnas:
         bestTrees = extract_highestLH_2Trees_ipseudo(join(DIR_OUTPUTS, MODEL), rna)
         if bestTrees is not None:
-            dnaTree = join(DIR_OUTPUTS, MODEL, 'raxml', rna, f"RAxML_bestTree.{rna}.{bestTrees['DNA'][0]}")
+            dnaTree = join(DIR_DNA, rna, f"RAxML_bestTree.{rna}.{bestTrees['DNA'][0]}")
             rnaTree = join(DIR_OUTPUTS, MODEL, 'raxmlP_iPseu', rna, f"RAxML_bestTree.{rna}.{bestTrees['RNA ignoring pseudoknots'][0]}")
             combineTreeFiles(DIR_COMBINE, rna, 'iPseu', dnaTree, rnaTree)
             
