@@ -8,13 +8,9 @@ import time
 import subprocess
 
 DIR_OUTPUTS = '/Users/u7875558/Documents/PhD/RNAPhylo/allModels_SEED/outputs'
-MODEL = 'S6A'
-DIR_WORKING = join(DIR_OUTPUTS, 'AU_Test', MODEL)
-os.makedirs(DIR_WORKING, exist_ok=True)
-DIR_COMBINE = join(DIR_WORKING, 'combine_2trees_highestLH')
-os.makedirs(DIR_COMBINE, exist_ok=True)
+#MODEL = 'S6A'
 
-DIR_INPUTS = '/Users/u7875558/Documents/PhD/RNAPhylo/allModels_SEED/nci_inputs'
+DIR_INPUTS = '/Users/u7875558/Documents/PhD/RNAPhylo/allModels_SEED/inputs'
 DIR_FASTA = join(DIR_INPUTS, 'fasta_files')
 DIR_SS = join(DIR_INPUTS, 'ss_files')
 
@@ -137,17 +133,23 @@ def run_bash(command):
         logging.error(f"Bash command failed: {command}")
     return process.returncode
 
-def runningCONSEL(rna, group, fasta_file, ss_file, persite_suffix, persite_path, prefix_consel):
-    combineTree = join(DIR_COMBINE, f'{rna}.{group}.highestLH.trees')
+def runningCONSEL(rna, model, group, fasta_file, ss_file, persite_suffix, persite_path, prefix_consel, dir_combined):
+    combineTree = join(dir_combined, f'{rna}.{group}.highestLH.trees')
     output_persite = join(persite_path, f'RAxML_perSiteLLs.{persite_suffix}')
     
     bash_file = '/Users/u7875558/Documents/PhD/RNAPhylo/scripts/analysis_scripts/AUTest/consel.sh'
     
-    consel_command=f"bash {bash_file} {fasta_file} {combineTree} {persite_suffix} {ss_file} {persite_path} {output_persite} {prefix_consel} {MODEL}"
+    consel_command=f"bash {bash_file} {fasta_file} {combineTree} {persite_suffix} {ss_file} {persite_path} {output_persite} {prefix_consel} {model}"
     run_bash(consel_command)
 
 def main():
-    log_filename = join(DIR_WORKING, f"CONSEL_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log")
+    MODEL = input('Model: ')
+    DIR_WORKING = join(DIR_OUTPUTS, 'AU_Test', MODEL)
+    os.makedirs(DIR_WORKING, exist_ok=True)
+    DIR_COMBINE = join(DIR_WORKING, 'combine_2trees_highestLH')
+    os.makedirs(DIR_COMBINE, exist_ok=True)
+
+    log_filename = join(DIR_WORKING, f"CONSEL_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.{MODEL}.log")
     logging.basicConfig(filename=log_filename, level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
     all_rnas, pseudo_rnas, nopseudo_rnas, working_rnas, working_pseu = extractAnalysedRNAs(join(DIR_OUTPUTS, MODEL), LOG_FILE)
@@ -175,7 +177,7 @@ def main():
                 
             # running consel
             try:
-                runningCONSEL(rna, 'wPseu', fasta_file, ss_pseudo_file, persite_pseudo_suffix, persite_path, prefix_pseudo_consel)
+                runningCONSEL(rna, MODEL, 'wPseu', fasta_file, ss_pseudo_file, persite_pseudo_suffix, persite_path, prefix_pseudo_consel, DIR_COMBINE)
                 logging.info(f"CONSEL is running with {rna} having pseudoknots.")
             except Exception as e:
                 logging.error(f"Error with {rna}: {e}")
@@ -195,15 +197,15 @@ def main():
             prefix_consel = join(persite_path, f'{rna}_ipseu_consel')
 
             if rna in reduced_rnas:
-                ss_pseudo_file = join(DIR_SS, f'{rna}.dots.ss.reduced')
+                ss_file = join(DIR_SS, f'{rna}.dots.ss.reduced')
                 fasta_file = join(DIR_FASTA, f'{rna}.nodup.fa.reduced')
             else:
-                ss_pseudo_file = join(DIR_SS, f'{rna}.dots.ss')
+                ss_file = join(DIR_SS, f'{rna}.dots.ss')
                 fasta_file = join(DIR_FASTA, f'{rna}.nodup.fa')
             
             # running consel 
             try:
-                runningCONSEL(rna, 'iPseu', fasta_file, ss_file, persite_suffix, persite_path, prefix_consel)
+                runningCONSEL(rna, MODEL, 'iPseu', fasta_file, ss_file, persite_suffix, persite_path, prefix_consel, DIR_COMBINE)
                 logging.info(f"CONSEL is running with {rna} ignoring pseudoknots.")
             except Exception as e:
                 logging.error(f"Error with {rna}: {e}")

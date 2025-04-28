@@ -1,7 +1,7 @@
 #!/bin/bash
 
-RAXML='/Users/u7875558/Documents/PhD/tools/standard-RAxML-master/raxmlHPC'
-PATH_CONSEL='/Users/u7875558/Documents/PhD/tools/consel/bin/'
+RAXML='/Users/u7875558/tools/standard-RAxML/raxmlHPC'
+PATH_CONSEL='/Users/u7875558/tools/consel/bin/'
 
 fasta_file=$1
 combineTree=$2
