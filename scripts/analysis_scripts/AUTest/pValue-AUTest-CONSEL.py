@@ -154,7 +154,7 @@ def main():
 
     all_rnas, pseudo_rnas, nopseudo_rnas, working_rnas, working_pseu = extractAnalysedRNAs(join(DIR_OUTPUTS, MODEL), LOG_FILE)
 
-    reduced_rnas = ['RF00001', 'RF00177', 'RF01960', 'RF02345', 'RF02401', 'RF02540', 'RF02842', 'RF02976']
+    reduced_rnas = ['RF00001', 'RF00177', 'RF01960', 'RF02345', 'RF02401', 'RF02540', 'RF02842']
     
     # for rna in working_pseu:
     #     bestTrees = extract_highestLH_2Trees_pseudo(join(DIR_OUTPUTS, MODEL), rna)
