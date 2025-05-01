@@ -40,27 +40,28 @@ def run_command(command: str) -> Optional[subprocess.CompletedProcess]:
         logging.exception(f"Failed to execute command: {command} - Error: {e}")
         return None
 
-def download_all_sto_files(po_sto: str) -> None:
-    """
-    Downloads all .sto files from the Rfam full alignments directory using wget.
-    All files are saved into the specified po_sto directory.
-
-    This function does not work to download all files automatically without calling out the specific file.
-    """
-    base_url = "https://ftp.ebi.ac.uk/pub/databases/Rfam/CURRENT/full_alignments/"
-    # wget -r -l1 -np -nd -A "*.sto" -R "index.html*" ftp://ftp.ebi.ac.uk/pub/databases/Rfam/CURRENT/full_alignments/
-    cmd = f'wget -r -l1 -np -nd -P {po_sto} -A "*.sto" -R "index.html*" {base_url}'
-    result = run_command(cmd)
-    if result is not None and result.returncode == 0:
-        logging.info("All .sto files downloaded successfully")
-    else:
-        logging.error("Error downloading .sto files")
+# def download_all_sto_files(po_sto: str) -> None:
+#     """
+#     Downloads all .sto files from the Rfam full alignments directory using wget.
+#     All files are saved into the specified po_sto directory.
+#
+#     This function does not work to download all files automatically without calling out the specific file.
+#     """
+#     base_url = "https://ftp.ebi.ac.uk/pub/databases/Rfam/CURRENT/full_alignments/"
+#     # wget -r -l1 -np -nd -A "*.sto" -R "index.html*" ftp://ftp.ebi.ac.uk/pub/databases/Rfam/CURRENT/full_alignments/
+#     cmd = f'wget -r -l1 -np -nd -P {po_sto} -A "*.sto" -R "index.html*" {base_url}'
+#     result = run_command(cmd)
+#     if result is not None and result.returncode == 0:
+#         logging.info("All .sto files downloaded successfully")
+#     else:
+#         logging.error("Error downloading .sto files")
 
 # -----------------------------------------------------------------------------
 # File Parsing and Conversion Functions
 # -----------------------------------------------------------------------------
 
-def extract_fasta_and_ss(fi_sto: str, po_fasta: str, po_ss_ignore: str, po_ss_consider: str, rf: str) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[int], Optional[int]]:
+def extract_fasta_and_ss(fi_sto: str, po_fasta: str, po_ss_ignore: str, po_ss_consider: str,
+                         po_subsample: str, rf: str) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[int], Optional[int]]:
     """
     Extracts FASTA alignments and secondary structure from the .sto file.
     Writes a nodup FASTA file and secondary structure files (ignore and consider pseudoknots).
@@ -94,6 +95,10 @@ def extract_fasta_and_ss(fi_sto: str, po_fasta: str, po_ss_ignore: str, po_ss_co
         with open(nodup_fasta_file, 'w') as fasta_file:
             for name, seq in alignments.items():
                 fasta_file.write(f'>{name}\n{seq}\n')
+
+        if len(alignments) >= 2000:
+            subsample_file = join(po_subsample, f'{rf}.subsamp.fa')
+            subsample_large_files(nodup_fasta_file, subsample_file)
     except Exception as e:
         logging.error(f"Error writing FASTA file {nodup_fasta_file}: {e}")
         return None, None, None, None, None
@@ -144,6 +149,10 @@ def extract_fasta_and_ss(fi_sto: str, po_fasta: str, po_ss_ignore: str, po_ss_co
         logging.warning(f"No secondary structure found for {rf}.")
 
     return nodup_fasta_file, ss_ignore_file, ss_consider_file, len(alignments), len(list(alignments.values())[0]) if alignments else 0
+
+def subsample_large_files(fasta_file, fo_fasta):
+    subsample_command = f'seqtk sample -n 2000 -s 42 {fasta_file} -o {fo_fasta}'
+    run_command(subsample_command)
 
 def convert_unpaired_bases(rna_structure: str) -> str:
     """Converts various unpaired symbols in the RNA structure to a uniform format."""
@@ -262,7 +271,8 @@ def main() -> None:
         'full_align': 'sto',
         'fasta': 'fasta',
         'ss_all': 'ss_all',
-        'ss_consider_pseudo': 'ss_pseudo'
+        'subsamp': 'subsample'
+        #'ss_consider_pseudo': 'ss_pseudo'
     }
 
     # Setup logging with proper filename and filemode
