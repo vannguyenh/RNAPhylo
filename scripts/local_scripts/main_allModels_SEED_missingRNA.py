@@ -240,28 +240,28 @@ def run_command(command):
     process.communicate()
 
 def main():
-    RAXML_EXECUTE = '/Users/u7875558/Documents/PhD/tools/standard-RAxML-master/raxmlHPC'
+    RAXML_EXECUTE = '/Users/u7875558/tools/standard-RAxML/raxmlHPC'
     RFAM_SEED = '/Users/u7875558/Documents/PhD/RNAPhylo/data/Rfam.seed'
 
     DIR_WORKING = '/Users/u7875558/Documents/PhD/RNAPhylo/allModels_SEED'
-    MODEL = 'S16'
+    MODEL = 'extra_DNA'
 
-    DIR_INPUTS = join(DIR_WORKING, 'nci_inputs')
-    dir_subinputs = {'fa' : create_directory(DIR_INPUTS, 'fasta_files'),
-                     'ss' : create_directory(DIR_INPUTS, 'ss_files'),
-                     'sec': create_directory(DIR_INPUTS, 'sections')}
+    DIR_INPUTS = join(DIR_WORKING, 'inputs')
+    dir_subinputs = {"fa": create_directory(DIR_INPUTS, 'fasta_files'),
+                     "ss": create_directory(DIR_INPUTS, 'ss_files'),
+                     "sec": create_directory(DIR_INPUTS, 'sections')}
     DIR_OUTPUTS = join(DIR_WORKING, 'outputs')
     DIR_LOGS = join(DIR_WORKING, 'logs')
 
-    paths = create_directories(DIR_INPUTS, dir_subinputs)
+    #paths = create_directories(DIR_INPUTS, dir_subinputs)
 
     log_filename = os.path.join(DIR_LOGS, f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.missing.{MODEL}.log")
     logging.basicConfig(filename=log_filename, level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
     logging.info(f'Running code with the model {MODEL}!')
 
 
-    #rfam_table = parseData_Table(RFAM_SEED, join(DIR_INPUTS, 'Rfam.full.seed.tbl'))
-    rfam_table = pd.read_table(join(DIR_INPUTS, 'Rfam.full.seed.tbl'))
+    rfam_table = parseData_Table(RFAM_SEED, join(DIR_INPUTS, 'Rfam.full.seed.tbl'))
+    #rfam_table = pd.read_table(join(DIR_INPUTS, 'Rfam.full.seed.tbl'))
     RFs = rfam_table["AC"].unique().tolist()
     # S16: raxml: ['RF00044', 'RF04302', 'RF04305', 'RF04303', 'RF04310', 'RF01380', 'RF01338', 'RF04306', 'RF04308', 'RF01047', 'RF04309', 'RF04307', 'RF00390', 'RF03760', 'RF03969', 'RF00976', 'RF03623', 'RF01510']
 
@@ -271,7 +271,7 @@ def main():
     #               'RF01047', 'RF04309', 'RF04307', 'RF00390', 'RF03760', 'RF03969', 'RF00976', 'RF03623', 'RF01510',
     #               'RF02060']
     #parse_sections(RFAM_SEED, RFs, dir_subinputs['sec'])
-
+    #RFs = ['RF00177','RF00256', 'RF00642','RF02345','RF02401','RF02540','RF02842','RF02962', 'RF02033', 'RF03069']
     for rf in RFs:
         section_file = os.path.join(dir_subinputs['sec'], f"{rf}.section")
         nodup_fasta, brackets_ss, dots_ss = parseFastaAndSS(section_file, dir_subinputs['fa'], dir_subinputs['ss'])
@@ -279,8 +279,8 @@ def main():
         if nodup_fasta and brackets_ss and dots_ss:
             #iqtree_prefix = os.path.join(paths['outputs'], 'iqtree', rf)
             raxml_prefix = os.path.join(DIR_OUTPUTS, MODEL, 'raxml', rf)
-            raxml_brackets_prefix = os.path.join(DIR_OUTPUTS, MODEL, 'raxmlP_wPseu', rf)
-            raxml_dots_prefix = os.path.join(DIR_OUTPUTS, MODEL, 'raxmlP_iPseu', rf)
+            #raxml_brackets_prefix = os.path.join(DIR_OUTPUTS, MODEL, 'raxmlP_wPseu', rf)
+            #raxml_dots_prefix = os.path.join(DIR_OUTPUTS, MODEL, 'raxmlP_iPseu', rf)
 
             if not os.path.isdir(raxml_prefix) or len(os.listdir(raxml_prefix)) != 50:
                 run_command(f"rm -r {raxml_prefix}")
@@ -288,27 +288,27 @@ def main():
                 raxml_command = (
                     #f"qsub -V -N raxml_{rf} -o {log_filename} -e {log_filename} "
                     #f"-l ncpus=12 -l mem=48gb -l walltime=48:00:00 -l wd -- "
-                    f"bash /Users/u7875558/Documents/PhD/RNAPhylo/scripts/nci_scripts/bashFiles/raxml.sh {rf} {nodup_fasta} {raxml_prefix} {MODEL} {RAXML_EXECUTE}"
+                    f"bash /Users/u7875558/Documents/PhD/RNAPhylo/scripts/nci_scripts/bashFiles/raxml.sh {rf} {nodup_fasta} {raxml_prefix} {RAXML_EXECUTE}"
                 )
                 run_command(raxml_command)
 
-            if not os.path.isdir(raxml_brackets_prefix) or len(os.listdir(raxml_brackets_prefix)) != 50:
-                run_command(f"rm -r {raxml_brackets_prefix}")
-                raxml_brackets_command = (
-                    #f"qsub -V -N raxmlP_br_{rf} -o {paths['logs']} -e {paths['logs']} "
-                    #f"-l ncpus=24 -l mem=96gb -l walltime=48:00:00 -l wd -- "
-                    f"bash /Users/u7875558/Documents/PhD/RNAPhylo/scripts/nci_scripts/bashFiles/raxmlP.sh {rf} {nodup_fasta} {brackets_ss} {raxml_brackets_prefix} {MODEL} {RAXML_EXECUTE}"
-                )
-                run_command(raxml_brackets_command)
-
-            if not os.path.isdir(raxml_dots_prefix) or len(os.listdir(raxml_dots_prefix)) !=50:
-                run_command(f"rm -r {raxml_dots_prefix}")
-                raxml_dots_command = (
-                    #f"qsub -V -N raxmlP_dot_{rf} -o {paths['logs']} -e {paths['logs']} "
-                    #f"-l ncpus=24 -l mem=96gb -l walltime=48:00:00 -l wd -- "
-                    f"bash /Users/u7875558/Documents/PhD/RNAPhylo/scripts/nci_scripts/bashFiles/raxmlP.sh {rf} {nodup_fasta} {dots_ss} {raxml_dots_prefix} {MODEL} {RAXML_EXECUTE}"
-               )
-                run_command(raxml_dots_command)
+            # if not os.path.isdir(raxml_brackets_prefix) or len(os.listdir(raxml_brackets_prefix)) != 50:
+            #     run_command(f"rm -r {raxml_brackets_prefix}")
+            #     raxml_brackets_command = (
+            #         #f"qsub -V -N raxmlP_br_{rf} -o {paths['logs']} -e {paths['logs']} "
+            #         #f"-l ncpus=24 -l mem=96gb -l walltime=48:00:00 -l wd -- "
+            #         f"bash /Users/u7875558/Documents/PhD/RNAPhylo/scripts/nci_scripts/bashFiles/raxmlP.sh {rf} {nodup_fasta} {brackets_ss} {raxml_brackets_prefix} {MODEL} {RAXML_EXECUTE}"
+            #     )
+            #     run_command(raxml_brackets_command)
+            #
+            # if not os.path.isdir(raxml_dots_prefix) or len(os.listdir(raxml_dots_prefix)) !=50:
+            #     run_command(f"rm -r {raxml_dots_prefix}")
+            #     raxml_dots_command = (
+            #         #f"qsub -V -N raxmlP_dot_{rf} -o {paths['logs']} -e {paths['logs']} "
+            #         #f"-l ncpus=24 -l mem=96gb -l walltime=48:00:00 -l wd -- "
+            #         f"bash /Users/u7875558/Documents/PhD/RNAPhylo/scripts/nci_scripts/bashFiles/raxmlP.sh {rf} {nodup_fasta} {dots_ss} {raxml_dots_prefix} {MODEL} {RAXML_EXECUTE}"
+            #    )
+            #     run_command(raxml_dots_command)
 
 if __name__ == "__main__":
     main()
