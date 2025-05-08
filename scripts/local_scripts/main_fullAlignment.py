@@ -1,8 +1,17 @@
 #!/usr/bin/env python3
 """
-Script to download all full alignment files (.sto) for RNA families,
-extract FASTA and secondary structure files, and generate a summary table.
+Script to:
+- download all full alignment files (.sto) for RNA families
+- extract FASTA and secondary structure files
+- generate a summary table.
 This version downloads all .sto files in one go using wget.
+
+------- PATTERN OF .sto FILE:
+#STOCKHOLM 1.0
+#=GF AU Infernal 1.1.4
+#=GS ...: extension for the sequence names as well as the methods to acquire the data
+Sequences (without '#' at the start)
+#=GC SS_cons: the consensus secondary structure
 """
 
 import os
@@ -61,7 +70,7 @@ def run_command(command: str) -> Optional[subprocess.CompletedProcess]:
 # -----------------------------------------------------------------------------
 
 def extract_fasta_and_ss(fi_sto: str, po_fasta: str, po_ss_ignore: str, po_ss_consider: str,
-                         po_subsample: str, rf: str) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[int], Optional[int]]:
+                         po_subsample: str, rf: str) -> Tuple[ Optional[int], Optional[int]]:
     """
     Extracts FASTA alignments and secondary structure from the .sto file.
     Writes a nodup FASTA file and secondary structure files (ignore and consider pseudoknots).
@@ -72,7 +81,7 @@ def extract_fasta_and_ss(fi_sto: str, po_fasta: str, po_ss_ignore: str, po_ss_co
             lines = f.readlines()
     except Exception as e:
         logging.error(f"Error reading file {fi_sto}: {e}")
-        return None, None, None, None, None
+        #return None, None, None, None, None
 
     alignments: Dict[str, str] = {}
     sequences = [l for l in lines if not l.startswith('#') and not l.startswith('/') and l.strip()]
@@ -88,7 +97,7 @@ def extract_fasta_and_ss(fi_sto: str, po_fasta: str, po_ss_ignore: str, po_ss_co
 
     if len(alignments) < 4:
         logging.info(f"Number of sequences of {rf} is less than 4.")
-        return None, None, None, None, None
+        #return None, None, None, None, None
 
     nodup_fasta_file = join(po_fasta, f'{rf}.nodup.fa')
     try:
@@ -99,9 +108,10 @@ def extract_fasta_and_ss(fi_sto: str, po_fasta: str, po_ss_ignore: str, po_ss_co
         if len(alignments) >= 2000:
             subsample_file = join(po_subsample, f'{rf}.subsamp.fa')
             subsample_large_files(nodup_fasta_file, subsample_file)
+
     except Exception as e:
         logging.error(f"Error writing FASTA file {nodup_fasta_file}: {e}")
-        return None, None, None, None, None
+        #return None, None, None, None, None
 
     ss_cons = ''
     ss_cons_found = False
@@ -140,18 +150,19 @@ def extract_fasta_and_ss(fi_sto: str, po_fasta: str, po_ss_ignore: str, po_ss_co
             else:
                 ss_consider_file = None
 
-            nseq = len(alignments)
-            nsite = len(list(alignments.values())[0])
-            return nodup_fasta_file, ss_ignore_file, ss_consider_file, nseq, nsite
+            #nseq = len(alignments)
+            #nsite = len(list(alignments.values())[0])
+            #return nodup_fasta_file, ss_ignore_file, ss_consider_file, nseq, nsite
         else:
             logging.warning(f"The secondary structure of {rf} has only unpaired bases.")
     else:
         logging.warning(f"No secondary structure found for {rf}.")
 
-    return nodup_fasta_file, ss_ignore_file, ss_consider_file, len(alignments), len(list(alignments.values())[0]) if alignments else 0
+    #return nodup_fasta_file, ss_ignore_file, ss_consider_file, len(alignments), len(list(alignments.values())[0]) if alignments else 0
+    return len(alignments), len(list(alignments.values())[0]) if alignments else 0
 
 def subsample_large_files(fasta_file, fo_fasta):
-    subsample_command = f'seqtk sample -n 2000 -s 42 {fasta_file} -o {fo_fasta}'
+    subsample_command = f'seqkit sample -n 2000 -s 42 {fasta_file} -o {fo_fasta}'
     run_command(subsample_command)
 
 def convert_unpaired_bases(rna_structure: str) -> str:
@@ -271,8 +282,8 @@ def main() -> None:
         'full_align': 'sto',
         'fasta': 'fasta',
         'ss_all': 'ss_all',
-        'subsamp': 'subsample'
-        #'ss_consider_pseudo': 'ss_pseudo'
+        'subsamp': 'subsample',
+        'ss_consider_pseudo': 'ss_pseudo'
     }
 
     # Setup logging with proper filename and filemode
@@ -296,11 +307,14 @@ def main() -> None:
         sto_file = join(sto_dir, f'{rf}.sto')
         print(f"Working on {rf} ...")
         if os.path.isfile(sto_file):
-            fasta_file, ss_ignore_file, ss_consider_file, nseq, nsite = extract_fasta_and_ss(
+            #fasta_file, ss_ignore_file, ss_consider_file, nseq, nsite = \
+            nseq, nsite = \
+            extract_fasta_and_ss(
                 sto_file,
                 join(DIR_WORKING, 'inputs', input_subs['fasta']),
                 join(DIR_WORKING, 'inputs', input_subs['ss_all']),
                 join(DIR_WORKING, 'inputs', input_subs['ss_consider_pseudo']),
+                join(DIR_WORKING, 'inputs', input_subs['subsamp']),
                 rf
             )
             tdata.append([rf, nseq, nsite])
@@ -311,7 +325,7 @@ def main() -> None:
     df.drop_duplicates(inplace=True)
     df.dropna(inplace=True)
     output_tbl = join(DIR_WORKING, 'inputs', 'Rfam.fullAlign.tbl')
-    df.to_csv(output_tbl, index=False)
+    df.to_csv(output_tbl, sep='\t', index=False)
     logging.info(f"Summary table of full alignments is created at {output_tbl}")
 
 
