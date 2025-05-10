@@ -41,7 +41,7 @@ def run_command(command: str) -> Optional[subprocess.CompletedProcess]:
     logging.info(f"Running: {command}")
     try:
         result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        logging.info(f"Output:\n{result.stdout}")
+        #logging.info(f"Output:\n{result.stdout}")
         if result.returncode != 0:
             logging.error(f"Command failed: {result.stderr}")
         return result
