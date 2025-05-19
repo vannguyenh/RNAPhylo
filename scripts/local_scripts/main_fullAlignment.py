@@ -105,7 +105,7 @@ def extract_fasta_and_ss(fi_sto: str, po_fasta: str, po_ss_ignore: str, po_ss_co
             for name, seq in alignments.items():
                 fasta_file.write(f'>{name}\n{seq}\n')
 
-        if len(alignments) >= 2000:
+        if len(alignments) > 1500:
             subsample_file = join(po_subsample, f'{rf}.subsamp.fa')
             subsample_large_files(nodup_fasta_file, subsample_file)
 
@@ -162,7 +162,7 @@ def extract_fasta_and_ss(fi_sto: str, po_fasta: str, po_ss_ignore: str, po_ss_co
     return len(alignments), len(list(alignments.values())[0]) if alignments else 0
 
 def subsample_large_files(fasta_file, fo_fasta):
-    subsample_command = f'seqkit sample -n 2000 -s 42 {fasta_file} -o {fo_fasta}'
+    subsample_command = f'seqkit sample -n 1500 -s 42 {fasta_file} -o {fo_fasta}'
     run_command(subsample_command)
 
 def convert_unpaired_bases(rna_structure: str) -> str:
@@ -297,7 +297,7 @@ def main() -> None:
     create_directory(DIR_WORKING, 'inputs', input_subs)
 
     # Download all .sto files using wget in one go.
-    sto_dir = join(DIR_WORKING, 'inputs', input_subs['full_align'])
+    sto_dir = join(DIR_WORKING, input_subs['full_align'])
 
     # Process each RF family by iterating through a known RF list.
     rf_list = [rf.split('.')[0] for rf in os.listdir(sto_dir)]
