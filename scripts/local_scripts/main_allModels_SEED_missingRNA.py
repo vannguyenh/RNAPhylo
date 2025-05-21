@@ -257,7 +257,7 @@ def run_command(command):
     process.communicate()
 
 def main():
-    MODEL = 'S16B'
+    MODEL = 'S6C'
     # set up logging
     logpath = os.path.join(DIR_WORKING, "logs",
                            datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + ".missing.log")
@@ -269,7 +269,9 @@ def main():
     #rfam_table = parseData_Table(RFAM_SEED, join(DIR_INPUTS, 'Rfam.full.seed.tbl'))
     #rfam_table = pd.read_table(join(DIR_INPUTS, 'Rfam.full.seed.tbl'))
     #RFs = rfam_table["AC"].unique().tolist()
-    RFs = ['RF03132', 'RF03156', 'RF00839', 'RF03479', 'RF01038']
+    # RFs = ['RF03132', 'RF03156', 'RF00839', 'RF03479', 'RF01038'] # S16B
+    RFs = ['RF02924'] # S6C
+
     for rf in RFs:
         section_file = os.path.join(DIR_SECTION, f"{rf}.section")
         nodup_fasta, brackets_ss, dots_ss = parseFastaAndSS(section_file, DIR_FASTA, DIR_SS)
