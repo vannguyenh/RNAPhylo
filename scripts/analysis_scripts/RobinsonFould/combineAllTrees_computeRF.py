@@ -9,10 +9,10 @@ from datetime import datetime
 
 LOG_FORMAT = '%(asctime)s - %(levelname)s - %(message)s'
 
-DIR_WORKING = "/Users/u7875558/Documents/PhD/RNAPhylo/allModels_SEED/"
+DIR_WORKING = "/Users/u7875558/Documents/RNAPhylo/allModels_SEED/"
 DIR_OUTPUTS = os.path.join(DIR_WORKING, "outputs")
 DIR_RF_LOGS = os.path.join(DIR_WORKING, 'logs', 'RF_distance')
-DIR_DNA = '/Users/u7875558/Documents/PhD/RNAPhylo/allModels_SEED/outputs/DNAtrees'
+DIR_DNA = '/Users/u7875558/Documents/RNAPhylo/allModels_SEED/outputs/DNAtrees'
 os.makedirs(DIR_RF_LOGS, exist_ok=True)
 
 LOG_FILE = join(DIR_WORKING, 'logs/2025-03-24_11-55-45.log')
@@ -116,7 +116,7 @@ def computeRFdistance_iqtreecmd(dcombine_path, rna):
             raxPiPTree = os.path.join(dir_combine_rna, f)
     logging.info(f"Compute the RF distances of {rna}.")
     #command=f"bash /Users/u7875558/Documents/PhD/RNAPhylo/scripts/analysis_scripts/RobinsonFould/computeRFdistance.sh {raxTree} {raxPwPTree} {raxPiPTree} {dir_combine_rna} {rna}"
-    command=f"bash /Users/u7875558/Documents/PhD/RNAPhylo/scripts/analysis_scripts/RobinsonFould/computeRFdistance.sh {raxTree} {raxPiPTree} {dir_combine_rna} {rna}"
+    command=f"bash /Users/u7875558/Documents/RNAPhylo/scripts/analysis_scripts/RobinsonFould/computeRFdistance.sh {raxTree} {raxPiPTree} {dir_combine_rna} {rna}"
     run_command(command)
 
 def main():
@@ -130,7 +130,7 @@ def main():
 
     rnas, pseudo_rnas, nopseudo_rnas = extractAnalysedRNAs(join(DIR_OUTPUTS, MODEL), LOG_FILE)
     # issue_str_rnas: RNA families running with DNA model, but not with RNA models.
-    issue_rnas = ['RF00207', 'RF00390', 'RF00976', 'RF01047', 'RF01338', 'RF01380', 'RF03623', 'RF03760', 'RF03969']
+    issue_rnas = ['RF00207', 'RF00976', 'RF01047', 'RF01338', 'RF01380', 'RF03623', 'RF03760', 'RF03969']
     working_rnas = set(rnas) - set(issue_rnas)
 
     for rna in working_rnas:
