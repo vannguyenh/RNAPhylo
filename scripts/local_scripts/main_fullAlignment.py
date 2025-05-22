@@ -30,11 +30,11 @@ MATCHING_PSEUDOKNOTS: Dict[str, str] = {'a': 'A', 'b': 'B', 'c': 'C', 'd': 'D'}
 # Directory and Download Utilities
 # -----------------------------------------------------------------------------
 
-def create_directory(dir_base: str, section: str, dir_subs: Dict[str, str]) -> None:
+def create_directory(dir_base: str, dir_sub: str):
     """Creates subdirectories under the specified section within the base directory."""
-    for dir_sub in dir_subs.values():
-        path = join(dir_base, section, dir_sub)
-        os.makedirs(path, exist_ok=True)
+    path = join(dir_base, dir_sub)
+    os.makedirs(path, exist_ok=True)
+    return path
 
 def run_command(command: str) -> Optional[subprocess.CompletedProcess]:
     """Runs a shell command and logs the output."""
@@ -49,18 +49,19 @@ def run_command(command: str) -> Optional[subprocess.CompletedProcess]:
         logging.exception(f"Failed to execute command: {command} - Error: {e}")
         return None
 
-# def download_all_sto_files(po_sto: str) -> None:
+# def download_all_sto_files(po_sto: str) -> None: 
+#   #The function does not work to download sto files -- Run the command on terminal to download the files!
 #     """
 #     Downloads all .sto files from the Rfam full alignments directory using wget.
 #     All files are saved into the specified po_sto directory.
-#
+
 #     This function does not work to download all files automatically without calling out the specific file.
 #     """
-#     base_url = "https://ftp.ebi.ac.uk/pub/databases/Rfam/CURRENT/full_alignments/"
+#     base_url = 'https://ftp.ebi.ac.uk/pub/databases/Rfam/CURRENT/full_alignments/'
 #     # wget -r -l1 -np -nd -A "*.sto" -R "index.html*" ftp://ftp.ebi.ac.uk/pub/databases/Rfam/CURRENT/full_alignments/
-#     cmd = f'wget -r -l1 -np -nd -P {po_sto} -A "*.sto" -R "index.html*" {base_url}'
+#     cmd = f'wget -r -l1 -np -nd -P {po_sto} -A .sto {base_url}'
 #     result = run_command(cmd)
-#     if result is not None and result.returncode == 0:
+#     if result and result.returncode == 0:
 #         logging.info("All .sto files downloaded successfully")
 #     else:
 #         logging.error("Error downloading .sto files")
@@ -70,7 +71,7 @@ def run_command(command: str) -> Optional[subprocess.CompletedProcess]:
 # -----------------------------------------------------------------------------
 
 def extract_fasta_and_ss(fi_sto: str, po_fasta: str, po_ss_ignore: str, po_ss_consider: str,
-                         po_subsample: str, rf: str) -> Tuple[ Optional[int], Optional[int]]:
+                         po_subsample: str, rf: str, threshold_sub: int) -> Tuple[ Optional[int], Optional[int]]:
     """
     Extracts FASTA alignments and secondary structure from the .sto file.
     Writes a nodup FASTA file and secondary structure files (ignore and consider pseudoknots).
@@ -105,9 +106,9 @@ def extract_fasta_and_ss(fi_sto: str, po_fasta: str, po_ss_ignore: str, po_ss_co
             for name, seq in alignments.items():
                 fasta_file.write(f'>{name}\n{seq}\n')
 
-        if len(alignments) > 1500:
+        if len(alignments) > threshold_sub:
             subsample_file = join(po_subsample, f'{rf}.subsamp.fa')
-            subsample_large_files(nodup_fasta_file, subsample_file)
+            subsample_large_files(nodup_fasta_file, subsample_file, threshold=threshold_sub)
 
     except Exception as e:
         logging.error(f"Error writing FASTA file {nodup_fasta_file}: {e}")
@@ -161,8 +162,8 @@ def extract_fasta_and_ss(fi_sto: str, po_fasta: str, po_ss_ignore: str, po_ss_co
     #return nodup_fasta_file, ss_ignore_file, ss_consider_file, len(alignments), len(list(alignments.values())[0]) if alignments else 0
     return len(alignments), len(list(alignments.values())[0]) if alignments else 0
 
-def subsample_large_files(fasta_file, fo_fasta):
-    subsample_command = f'seqkit sample -n 1500 -s 42 {fasta_file} -o {fo_fasta}'
+def subsample_large_files(fasta_file, fo_fasta, threshold):
+    subsample_command = f'seqkit sample -n {threshold} -s 42 {fasta_file} -o {fo_fasta}'
     run_command(subsample_command)
 
 def convert_unpaired_bases(rna_structure: str) -> str:
@@ -277,44 +278,41 @@ def validate_brackets_with_positions(rna_structure: str) -> Tuple[bool, List[Tup
 # -----------------------------------------------------------------------------
 
 def main() -> None:
-    DIR_WORKING = '/Users/u7875558/Documents/PhD/RNAPhylo/fullAlignments_FULL'
-    input_subs = {
-        'full_align': 'sto',
-        'fasta': 'fasta',
-        'ss_all': 'ss_all',
-        'subsamp': 'subsample',
-        'ss_consider_pseudo': 'ss_pseudo'
-    }
+    DIR_WORKING = '/Users/u7875558/Documents/RNAPhylo/fullAlignments_FULL'
 
-    # Setup logging with proper filename and filemode
-    log_path = os.path.join(DIR_WORKING, 'logs')
-    os.makedirs(log_path, exist_ok=True)
-    log_file = join(log_path, f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log")
+    DIR_INPUTS  = create_directory(DIR_WORKING, 'inputs')
+    DIR_STO     = create_directory(DIR_INPUTS, 'sto')
+    DIR_FASTA   = create_directory(DIR_INPUTS, 'fasta')
+    DIR_SS      = create_directory(DIR_INPUTS, 'ss_all')
+    DIR_PSEUDO_SS   = create_directory(DIR_INPUTS, 'ss_consdier')
+    DIR_SUBSAMP = create_directory(DIR_INPUTS, 'subsample')
+    DIR_LOGS    = create_directory(DIR_WORKING, 'logs')
+
+    # Setup logging with proper filename and filemodee
+    log_file = join(DIR_LOGS, f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log")
     logging.basicConfig(filename=log_file, filemode='w', level=logging.DEBUG,
                         format='%(asctime)s - %(levelname)s - %(message)s')
 
-    # Create directories (inputs/sto, inputs/fasta, etc.)
-    create_directory(DIR_WORKING, 'inputs', input_subs)
-
     # Download all .sto files using wget in one go.
-    sto_dir = join(DIR_WORKING, input_subs['full_align'])
+    #sto_dir = join(DIR_WORKING, input_subs['full_align'])
+    download_all_sto_files(DIR_STO)
 
     # Process each RF family by iterating through a known RF list.
-    rf_list = [rf.split('.')[0] for rf in os.listdir(sto_dir)]
+    rf_list = [rf.split('.')[0] for rf in os.listdir(DIR_STO)]
     tdata = []
 
     for rf in rf_list:
-        sto_file = join(sto_dir, f'{rf}.sto')
+        sto_file = join(DIR_STO, f'{rf}.sto')
         print(f"Working on {rf} ...")
         if os.path.isfile(sto_file):
             #fasta_file, ss_ignore_file, ss_consider_file, nseq, nsite = \
             nseq, nsite = \
             extract_fasta_and_ss(
                 sto_file,
-                join(DIR_WORKING, 'inputs', input_subs['fasta']),
-                join(DIR_WORKING, 'inputs', input_subs['ss_all']),
-                join(DIR_WORKING, 'inputs', input_subs['ss_consider_pseudo']),
-                join(DIR_WORKING, 'inputs', input_subs['subsamp']),
+                DIR_FASTA, 
+                DIR_SS, 
+                DIR_PSEUDO_SS,
+                DIR_SUBSAMP,
                 rf
             )
             tdata.append([rf, nseq, nsite])
