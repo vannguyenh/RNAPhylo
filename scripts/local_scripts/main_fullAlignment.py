@@ -49,23 +49,6 @@ def run_command(command: str) -> Optional[subprocess.CompletedProcess]:
         logging.exception(f"Failed to execute command: {command} - Error: {e}")
         return None
 
-# def download_all_sto_files(po_sto: str) -> None: 
-#   #The function does not work to download sto files -- Run the command on terminal to download the files!
-#     """
-#     Downloads all .sto files from the Rfam full alignments directory using wget.
-#     All files are saved into the specified po_sto directory.
-
-#     This function does not work to download all files automatically without calling out the specific file.
-#     """
-#     base_url = 'https://ftp.ebi.ac.uk/pub/databases/Rfam/CURRENT/full_alignments/'
-#     # wget -r -l1 -np -nd -A "*.sto" -R "index.html*" ftp://ftp.ebi.ac.uk/pub/databases/Rfam/CURRENT/full_alignments/
-#     cmd = f'wget -r -l1 -np -nd -P {po_sto} -A .sto {base_url}'
-#     result = run_command(cmd)
-#     if result and result.returncode == 0:
-#         logging.info("All .sto files downloaded successfully")
-#     else:
-#         logging.error("Error downloading .sto files")
-
 # -----------------------------------------------------------------------------
 # File Parsing and Conversion Functions
 # -----------------------------------------------------------------------------
@@ -294,8 +277,8 @@ def main() -> None:
                         format='%(asctime)s - %(levelname)s - %(message)s')
 
     # Download all .sto files using wget in one go.
-    #sto_dir = join(DIR_WORKING, input_subs['full_align'])
-    download_all_sto_files(DIR_STO)
+    # running this command on terminal -- in the directory of sto 
+    # wget -r -l1 -np -nd -A "*.sto" -R "index.html*" ftp://ftp.ebi.ac.uk/pub/databases/Rfam/CURRENT/full_alignments/
 
     # Process each RF family by iterating through a known RF list.
     rf_list = [rf.split('.')[0] for rf in os.listdir(DIR_STO)]
