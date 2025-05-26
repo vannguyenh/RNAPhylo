@@ -270,6 +270,7 @@ def main() -> None:
     DIR_PSEUDO_SS   = create_directory(DIR_INPUTS, 'ss_consdier')
     DIR_SUBSAMP = create_directory(DIR_INPUTS, 'subsample')
     DIR_LOGS    = create_directory(DIR_WORKING, 'logs')
+    SUBSAMPL_THRESHOLD = 1000
 
     # Setup logging with proper filename and filemodee
     log_file = join(DIR_LOGS, f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log")
@@ -296,7 +297,8 @@ def main() -> None:
                 DIR_SS, 
                 DIR_PSEUDO_SS,
                 DIR_SUBSAMP,
-                rf
+                rf, 
+                SUBSAMPL_THRESHOLD
             )
             tdata.append([rf, nseq, nsite])
         else:
