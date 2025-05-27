@@ -7,16 +7,17 @@ from datetime import datetime
 import time
 import subprocess
 
-DIR_OUTPUTS = '/Users/u7875558/Documents/PhD/RNAPhylo/allModels_SEED/outputs'
-DIR_DNA = '/Users/u7875558/Documents/PhD/RNAPhylo/allModels_SEED/outputs/DNAtrees'
+DIR_WORKING = '/Users/u7875558/Documents/RNAPhylo/allModels_SEED'
+DIR_OUTPUTS = join(DIR_WORKING, 'outputs')
+DIR_DNA = join(DIR_OUTPUTS, 'DNAtrees')
 #MODEL = 'S6A'
 
-DIR_INPUTS = '/Users/u7875558/Documents/PhD/RNAPhylo/allModels_SEED/inputs'
+DIR_INPUTS = join(DIR_WORKING, 'inputs')
 DIR_FASTA = join(DIR_INPUTS, 'fasta_files')
 DIR_SS = join(DIR_INPUTS, 'ss_files')
 
 TREE_OUTPUT = join(DIR_OUTPUTS, 'combinedFiles')
-LOG_FILE='/Users/u7875558/Documents/PhD/RNAPhylo/allModels_SEED/logs/2025-03-24_11-55-45.log'
+LOG_FILE='/Users/u7875558/Documents/RNAPhylo/allModels_SEED/logs/2025-03-21_10-08-12.log'
 
 SUBFOLDERS=['raxml', 'raxmlP_wPseu', 'raxmlP_iPseu']
 
@@ -63,7 +64,7 @@ def extractAnalysedRNAs(dirmodel, log_file):
     pseudo_rnas=set(rnas)-set(nopseudo_rnas)
     accepted_pseudo=set(accepted_rnas) & set(pseudo_rnas)
 
-    issue_str_rnas = ['RF00207', 'RF00390', 'RF01380', 'RF01338', 'RF01047', 'RF03760', 'RF03969', 'RF00976', 'RF03623']
+    issue_str_rnas = ['RF00207', 'RF00976', 'RF01047', 'RF01338', 'RF01380', 'RF03623', 'RF03760', 'RF03969']
     working_rnas = set(accepted_rnas) - set(issue_str_rnas)
     working_pseudo = set(accepted_pseudo) - set(issue_str_rnas)
 
@@ -137,7 +138,7 @@ def runningCONSEL(rna, model, group, fasta_file, ss_file, persite_suffix, persit
     combineTree = join(dir_combined, f'{rna}.{group}.highestLH.trees')
     output_persite = join(persite_path, f'RAxML_perSiteLLs.{persite_suffix}')
     
-    bash_file = '/Users/u7875558/Documents/PhD/RNAPhylo/scripts/analysis_scripts/AUTest/consel.sh'
+    bash_file = '/Users/u7875558/Documents/RNAPhylo/RNAPhylo/scripts/analysis_scripts/AUTest/consel.sh'
     
     consel_command=f"bash {bash_file} {fasta_file} {combineTree} {persite_suffix} {ss_file} {persite_path} {output_persite} {prefix_consel} {model}"
     run_bash(consel_command)
