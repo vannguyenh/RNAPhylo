@@ -17,7 +17,7 @@ def control_output(path, group):
                 print(f'RAxML cannot run {rf}')
                 notrun_rf.append(rf)
             elif len(os.listdir(rf_path)) != 10 and len(os.listdir(rf_path)) != 50:
-                print(f'{rf} has only only {len(os.listdir(rf_path))} files.')
+                print(f'{rf} has only {len(os.listdir(rf_path))} files.')
                 issue_rf.append(rf)
             else:
                 continue
