@@ -10,10 +10,11 @@ from datetime import datetime
 LOG_FORMAT = '%(asctime)s - %(levelname)s - %(message)s'
 
 DIR_WORKING = "/Users/u7875558/Documents/RNAPhylo/allModels_SEED/"
-DIR_OUTPUTS = os.path.join(DIR_WORKING, "outputs")
-DIR_RF_LOGS = os.path.join(DIR_WORKING, 'logs', 'RF_distance')
-DIR_DNA = '/Users/u7875558/Documents/RNAPhylo/allModels_SEED/outputs/DNAtrees'
+DIR_OUTPUTS = join(DIR_WORKING, "outputs")
+DIR_RF_LOGS = join(DIR_WORKING, "logs", "RF_distance")
 os.makedirs(DIR_RF_LOGS, exist_ok=True)
+
+DIR_DNA = '/Users/u7875558/Documents/RNAPhylo/allModels_SEED/outputs/DNAtrees'
 
 LOG_FILE = join(DIR_WORKING, 'logs/2025-03-24_11-55-45.log')
 SUBFOLDERS = ['raxml', 'raxmlP_wPseu', 'raxmlP_iPseu']
@@ -36,7 +37,7 @@ def check_branch_length(diroutput, rna):
     if len(delete_files) > 0:
         return rna
 
-def extractAnalysedRNAs(diroutput, log_file):
+def extractAnalysedRNAs(log_file):
     # This function produces two sets of accepted RNAs -- RNAs containing pseudoknots and RNAs containing no pseudoknots    
     # extract accepted RNAs which do not have any branch length > 1
     rnas = os.listdir(DIR_DNA)
@@ -60,7 +61,7 @@ def extractAnalysedRNAs(diroutput, log_file):
     
     pseudo_rnas = set(rnas)-set(nopseudo_rnas)
     accepted_pseudo = set(accepted_rnas) & set(pseudo_rnas)
-    
+    logging.info(f'{len(accepted_rnas)} can be used for the downstream analysis.')
     return accepted_rnas, accepted_pseudo, accepted_nopseudo
 
 def produceCombinedTrees(dir_input, dir_output, rna):
@@ -81,6 +82,7 @@ def produceCombinedTrees(dir_input, dir_output, rna):
             input_method = join(DIR_DNA, rna)
         else:
             input_method = os.path.join(dir_input, method, rna)
+
         input_files = sorted([f for f in os.listdir(input_method) if f.startswith("RAxML_bestTree.")])
 
         if len(input_files) == 0:
@@ -116,7 +118,7 @@ def computeRFdistance_iqtreecmd(dcombine_path, rna):
             raxPiPTree = os.path.join(dir_combine_rna, f)
     logging.info(f"Compute the RF distances of {rna}.")
     #command=f"bash /Users/u7875558/Documents/PhD/RNAPhylo/scripts/analysis_scripts/RobinsonFould/computeRFdistance.sh {raxTree} {raxPwPTree} {raxPiPTree} {dir_combine_rna} {rna}"
-    command=f"bash /Users/u7875558/Documents/RNAPhylo/scripts/analysis_scripts/RobinsonFould/computeRFdistance.sh {raxTree} {raxPiPTree} {dir_combine_rna} {rna}"
+    command=f"bash /Users/u7875558/Documents/RNAPhylo/RNAPhylo/scripts/analysis_scripts/RobinsonFould/computeRFdistance.sh {raxTree} {raxPiPTree} {dir_combine_rna} {rna}"
     run_command(command)
 
 def main():
@@ -128,7 +130,7 @@ def main():
     logging.basicConfig(filename=log_filename, level=logging.DEBUG, format=LOG_FORMAT)
     logging.info(f"Running the code with the model {MODEL}.")
 
-    rnas, pseudo_rnas, nopseudo_rnas = extractAnalysedRNAs(join(DIR_OUTPUTS, MODEL), LOG_FILE)
+    rnas, pseudo_rnas, nopseudo_rnas = extractAnalysedRNAs(LOG_FILE)
     # issue_str_rnas: RNA families running with DNA model, but not with RNA models.
     issue_rnas = ['RF00207', 'RF00976', 'RF01047', 'RF01338', 'RF01380', 'RF03623', 'RF03760', 'RF03969']
     working_rnas = set(rnas) - set(issue_rnas)
