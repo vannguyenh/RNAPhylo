@@ -155,8 +155,6 @@ def main():
 
     all_rnas, pseudo_rnas, nopseudo_rnas, working_rnas, working_pseu = extractAnalysedRNAs(join(DIR_OUTPUTS, MODEL), LOG_FILE)
 
-    reduced_rnas = ['RF00001', 'RF00177', 'RF01960', 'RF02345', 'RF02401', 'RF02540', 'RF02842']
-    
     # for rna in working_pseu:
     #     bestTrees = extract_highestLH_2Trees_pseudo(join(DIR_OUTPUTS, MODEL), rna)
     #     if bestTrees is not None:
@@ -197,19 +195,27 @@ def main():
             persite_suffix = f'{rna}.ipseu.sitelh'
             prefix_consel = join(persite_path, f'{rna}_ipseu_consel')
 
-            if rna in reduced_rnas:
-                ss_file = join(DIR_SS, f'{rna}.dots.ss.reduced')
-                fasta_file = join(DIR_FASTA, f'{rna}.nodup.fa.reduced')
-            else:
-                ss_file = join(DIR_SS, f'{rna}.dots.ss')
-                fasta_file = join(DIR_FASTA, f'{rna}.nodup.fa')
+            ss_file = join(DIR_SS, f'{rna}.dots.ss')
+            fasta_file = join(DIR_FASTA, f'{rna}.nodup.fa')
             
-            # running consel 
             try:
                 runningCONSEL(rna, MODEL, 'iPseu', fasta_file, ss_file, persite_suffix, persite_path, prefix_consel, DIR_COMBINE)
                 logging.info(f"CONSEL is running with {rna} ignoring pseudoknots.")
             except Exception as e:
                 logging.error(f"Error with {rna}: {e}")
+
+            count = 0
+            for f in os.listdir(persite_path):
+                if f.startswith(f'{rna}'):
+                    count += 1
+                
+            if count != 4:
+                ss_file = join(DIR_SS, f'{rna}.dots.ss.reduced')
+                fasta_file = join(DIR_FASTA, f'{rna}.nodup.fa.reduced')
+
+                runningCONSEL(rna, MODEL, 'iPseu', fasta_file, ss_file, persite_suffix, persite_path, prefix_consel, DIR_COMBINE)
+                logging.info(f"Reduced RNAs: CONSEL is running with {rna} ignoring pseudoknots.")
+                        
         else:
             logging.warning(f"{rna} ignoring pseudoknots has issue with the tree files.")
     
