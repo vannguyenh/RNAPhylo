@@ -118,6 +118,16 @@ def extract_highestLH_2Trees_ipseudo(dir_output, rna):
     else:
         return None
 
+def extract_highestLH_2Trees_DNA(dir_output, rna):
+    raxTree_path = join(DIR_DNA, rna)
+    raxTree_extra_path = join(dir_output, rna)
+    if check_inferred_tree(raxTree_path) and check_inferred_tree(raxTree_extra_path):
+        bestTreesLH = {'DNA': extract_highestloglh(raxTree_path),
+                       'extra DNA': extract_highestloglh(raxTree_extra_path)}
+        return bestTreesLH
+    else:
+        return None
+
 def combineTreeFiles(dir_combined, rna, group, tree1, tree2):
     combined_TreeFile = join(dir_combined, f"{rna}.{group}.highestLH.trees")
 
@@ -191,7 +201,11 @@ def main():
         bestTrees = extract_highestLH_2Trees_ipseudo(join(DIR_OUTPUTS, MODEL), rna)
         if bestTrees is not None:
             dnaTree = join(DIR_DNA, rna, f"RAxML_bestTree.{rna}.{bestTrees['DNA'][0]}")
-            rnaTree = join(DIR_OUTPUTS, MODEL, 'raxmlP_iPseu', rna, f"RAxML_bestTree.{rna}.{bestTrees['RNA ignoring pseudoknots'][0]}")
+            if MODEL.startswith('S'):
+                rnaTree = join(DIR_OUTPUTS, MODEL, 'raxmlP_iPseu', rna, f"RAxML_bestTree.{rna}.{bestTrees['RNA ignoring pseudoknots'][0]}")
+            else:
+                rnaTree = join(DIR_OUTPUTS, MODEL, rna, f"RAxML_bestTree.{rna}.{bestTrees['extra DNA'][0]}")
+            
             combineTreeFiles(DIR_COMBINE, rna, 'iPseu', dnaTree, rnaTree)
             
             persite_path = join(DIR_WORKING, 'ignore_pseudo', rna)
