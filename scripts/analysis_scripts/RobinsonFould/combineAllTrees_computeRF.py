@@ -80,8 +80,13 @@ def produceCombinedTrees(dir_input, dir_output, rna):
         #for rna in rnas:
         if method == 'raxml':
             input_method = join(DIR_DNA, rna)
+            suffix = endings[method]
+        elif dir_input.endswith('extra_DNA'):
+            input_method = join(dir_input, rna)
+            suffix = "raxml.extra"
         else:
             input_method = os.path.join(dir_input, method, rna)
+            suffix = endings[method]
 
         input_files = sorted([f for f in os.listdir(input_method) if f.startswith("RAxML_bestTree.")])
 
@@ -90,7 +95,7 @@ def produceCombinedTrees(dir_input, dir_output, rna):
         else:
             output_rna = os.path.join(dir_output, rna)
             os.makedirs(output_rna, exist_ok=True)
-            output_file = os.path.join(output_rna, f"{rna}.{endings[method]}")
+            output_file = os.path.join(output_rna, f"{rna}.{suffix}")
             with open(output_file, "w") as outfile:
                 for filename in input_files:
                     file_path = os.path.join(input_method, filename)
@@ -116,6 +121,9 @@ def computeRFdistance_iqtreecmd(dcombine_path, rna):
         #    raxPwPTree = os.path.join(dir_combine_rna, f)
         elif f.endswith("raxmlPi"):
             raxPiPTree = os.path.join(dir_combine_rna, f)
+        elif f.endswith("raxml.extra"):
+            raxPiPTree = os.path.join(dir_combine_rna, f)
+            
     logging.info(f"Compute the RF distances of {rna}.")
     #command=f"bash /Users/u7875558/Documents/PhD/RNAPhylo/scripts/analysis_scripts/RobinsonFould/computeRFdistance.sh {raxTree} {raxPwPTree} {raxPiPTree} {dir_combine_rna} {rna}"
     command=f"bash /Users/u7875558/Documents/RNAPhylo/RNAPhylo/scripts/analysis_scripts/RobinsonFould/computeRFdistance.sh {raxTree} {raxPiPTree} {dir_combine_rna} {rna}"
