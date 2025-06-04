@@ -111,8 +111,6 @@ def run_command(command):
         logging.error(f"Command failed: {command} with error: {e}")
 
 def computeRFdistance_iqtreecmd(dcombine_path, rna):
-    #rnas=os.listdir(dcombine_path)
-    #for rna in rnas:
     dir_combine_rna = os.path.join(dcombine_path, rna)
     for f in os.listdir(dir_combine_rna):
         if f.endswith("raxml"):
@@ -123,7 +121,7 @@ def computeRFdistance_iqtreecmd(dcombine_path, rna):
             raxPiPTree = os.path.join(dir_combine_rna, f)
         elif f.endswith("raxml.extra"):
             raxPiPTree = os.path.join(dir_combine_rna, f)
-            
+
     logging.info(f"Compute the RF distances of {rna}.")
     #command=f"bash /Users/u7875558/Documents/PhD/RNAPhylo/scripts/analysis_scripts/RobinsonFould/computeRFdistance.sh {raxTree} {raxPwPTree} {raxPiPTree} {dir_combine_rna} {rna}"
     command=f"bash /Users/u7875558/Documents/RNAPhylo/RNAPhylo/scripts/analysis_scripts/RobinsonFould/computeRFdistance.sh {raxTree} {raxPiPTree} {dir_combine_rna} {rna}"
