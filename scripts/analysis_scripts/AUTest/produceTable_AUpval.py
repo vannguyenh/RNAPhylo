@@ -25,10 +25,7 @@ EXPECTED_SEEDS = {f"{i:02d}" for i in range(1, 11)}
 SUFFIX_IGNORE = 'ipseu_consel'  # suffix before .pv for ignore_pseudo
 
 # RNAs to exclude
-ISSUE_RNAS = [
-    'RF00207','RF00390','RF01380','RF01338','RF01047',
-    'RF03760','RF03969','RF00976','RF03623'
-]
+ISSUE_RNAS =  ['RF00207', 'RF00976', 'RF01047', 'RF01338', 'RF01380', 'RF03623', 'RF03760', 'RF03969']
 
 # ─── UTILITY FUNCTIONS ────────────────────────────────────────────────────────
 
