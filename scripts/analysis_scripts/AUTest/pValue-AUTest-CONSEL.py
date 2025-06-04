@@ -143,6 +143,10 @@ def runningCONSEL(rna, model, group, fasta_file, ss_file, persite_suffix, persit
     consel_command=f"bash {bash_file} {fasta_file} {combineTree} {persite_suffix} {ss_file} {persite_path} {output_persite} {prefix_consel} {model}"
     run_bash(consel_command)
 
+def run_command(command):
+    process = subprocess.Popen(command, shell=True)
+    process.communicate()
+
 def main():
     MODEL = input('Model: ')
     DIR_WORKING = join(DIR_OUTPUTS, 'AU_Test', MODEL)
@@ -210,6 +214,8 @@ def main():
                     count += 1
                 
             if count != 4:
+                run_command(f"rm -rf {persite_path}")
+                os.makedirs(persite_path, exist_ok=True)
                 ss_file = join(DIR_SS, f'{rna}.dots.ss.reduced')
                 fasta_file = join(DIR_FASTA, f'{rna}.nodup.fa.reduced')
 
