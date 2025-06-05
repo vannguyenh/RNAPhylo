@@ -148,9 +148,12 @@ def runningCONSEL(rna, model, group, fasta_file, ss_file, persite_suffix, persit
     combineTree = join(dir_combined, f'{rna}.{group}.highestLH.trees')
     output_persite = join(persite_path, f'RAxML_perSiteLLs.{persite_suffix}')
     
-    bash_file = '/Users/u7875558/Documents/RNAPhylo/RNAPhylo/scripts/analysis_scripts/AUTest/consel.sh'
-    
-    consel_command=f"bash {bash_file} {fasta_file} {combineTree} {persite_suffix} {ss_file} {persite_path} {output_persite} {prefix_consel} {model}"
+    if model.startswith('S'):
+        bash_file = '/Users/u7875558/Documents/RNAPhylo/RNAPhylo/scripts/analysis_scripts/AUTest/consel.sh'
+        consel_command = f"bash {bash_file} {fasta_file} {combineTree} {persite_suffix} {ss_file} {persite_path} {output_persite} {prefix_consel} {model}"
+    else:
+        bash_file = '/Users/u7875558/Documents/RNAPhylo/RNAPhylo/scripts/analysis_scripts/AUTest/consel_DNA.sh'
+        consel_command =  f"bash {bash_file} {fasta_file} {combineTree} {persite_suffix} {persite_path} {output_persite} {prefix_consel}"
     run_bash(consel_command)
 
 def run_command(command):
@@ -198,46 +201,48 @@ def main():
     #         logging.warning(f"{rna} considering pseudoknots has issue with the tree files.")
     
     for rna in working_rnas:
-        bestTrees = extract_highestLH_2Trees_ipseudo(join(DIR_OUTPUTS, MODEL), rna)
-        if bestTrees is not None:
-            dnaTree = join(DIR_DNA, rna, f"RAxML_bestTree.{rna}.{bestTrees['DNA'][0]}")
-            if MODEL.startswith('S'):
+        if MODEL.startswith('S'):
+            bestTrees = extract_highestLH_2Trees_ipseudo(join(DIR_OUTPUTS, MODEL), rna)
+            if bestTrees is not None:
+                dnaTree = join(DIR_DNA, rna, f"RAxML_bestTree.{rna}.{bestTrees['DNA'][0]}")
                 rnaTree = join(DIR_OUTPUTS, MODEL, 'raxmlP_iPseu', rna, f"RAxML_bestTree.{rna}.{bestTrees['RNA ignoring pseudoknots'][0]}")
-            else:
-                rnaTree = join(DIR_OUTPUTS, MODEL, rna, f"RAxML_bestTree.{rna}.{bestTrees['extra DNA'][0]}")
-            
-            combineTreeFiles(DIR_COMBINE, rna, 'iPseu', dnaTree, rnaTree)
-            
-            persite_path = join(DIR_WORKING, 'ignore_pseudo', rna)
-            os.makedirs(persite_path, exist_ok=True)
-            persite_suffix = f'{rna}.ipseu.sitelh'
-            prefix_consel = join(persite_path, f'{rna}_ipseu_consel')
-
-            ss_file = join(DIR_SS, f'{rna}.dots.ss')
-            fasta_file = join(DIR_FASTA, f'{rna}.nodup.fa')
-            
-            try:
-                runningCONSEL(rna, MODEL, 'iPseu', fasta_file, ss_file, persite_suffix, persite_path, prefix_consel, DIR_COMBINE)
-                logging.info(f"CONSEL is running with {rna} ignoring pseudoknots.")
-            except Exception as e:
-                logging.error(f"Error with {rna}: {e}")
-
-            count = 0
-            for f in os.listdir(persite_path):
-                if f.startswith(f'{rna}'):
-                    count += 1
-                
-            if count != 4:
-                run_command(f"rm -rf {persite_path}")
-                os.makedirs(persite_path, exist_ok=True)
-                ss_file = join(DIR_SS, f'{rna}.dots.ss.reduced')
-                fasta_file = join(DIR_FASTA, f'{rna}.nodup.fa.reduced')
-
-                runningCONSEL(rna, MODEL, 'iPseu', fasta_file, ss_file, persite_suffix, persite_path, prefix_consel, DIR_COMBINE)
-                logging.info(f"Reduced RNAs: CONSEL is running with {rna} ignoring pseudoknots.")
-                        
         else:
-            logging.warning(f"{rna} ignoring pseudoknots has issue with the tree files.")
+            bestTrees = extract_highestLH_2Trees_DNA(join(DIR_OUTPUTS, MODEL), rna)
+            if bestTrees is not None:
+                dnaTree = join(DIR_DNA, rna, f"RAxML_bestTree.{rna}.{bestTrees['DNA'][0]}")
+                rnaTree = join(DIR_OUTPUTS, MODEL, rna, f"RAxML_bestTree.{rna}.{bestTrees['extra DNA'][0]}")
+
+            
+        combineTreeFiles(DIR_COMBINE, rna, 'iPseu', dnaTree, rnaTree)
+            
+        persite_path = join(DIR_WORKING, 'ignore_pseudo', rna)
+        os.makedirs(persite_path, exist_ok=True)
+        persite_suffix = f'{rna}.ipseu.sitelh'
+        prefix_consel = join(persite_path, f'{rna}_ipseu_consel')
+
+        ss_file = join(DIR_SS, f'{rna}.dots.ss')
+        fasta_file = join(DIR_FASTA, f'{rna}.nodup.fa')
+            
+        try:
+            runningCONSEL(rna, MODEL, 'iPseu', fasta_file, ss_file, persite_suffix, persite_path, prefix_consel, DIR_COMBINE)
+            logging.info(f"CONSEL is running with {rna} ignoring pseudoknots.")
+        except Exception as e:
+            logging.error(f"Error with {rna}: {e}")
+
+        count = 0
+        for f in os.listdir(persite_path):
+            if f.startswith(f'{rna}'):
+                count += 1
+                
+        if count != 4:
+            run_command(f"rm -rf {persite_path}")
+            os.makedirs(persite_path, exist_ok=True)
+            ss_file = join(DIR_SS, f'{rna}.dots.ss.reduced')
+            fasta_file = join(DIR_FASTA, f'{rna}.nodup.fa.reduced')
+
+            runningCONSEL(rna, MODEL, 'iPseu', fasta_file, ss_file, persite_suffix, persite_path, prefix_consel, DIR_COMBINE)
+            logging.info(f"Reduced RNAs: CONSEL is running with {rna} ignoring pseudoknots.")
+
     
 if __name__=='__main__':
     main()
