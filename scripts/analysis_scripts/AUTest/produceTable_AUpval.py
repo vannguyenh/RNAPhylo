@@ -77,7 +77,7 @@ def parse_consel_output(pv_path):
 # Discover S6*/S16*/S7* models
 models = sorted(
     m for m in os.listdir(DIR_CONSEL_BASE)
-    if os.path.isdir(join(DIR_CONSEL_BASE, m)) and ((m.startswith('S')) )
+    if os.path.isdir(join(DIR_CONSEL_BASE, m)) and ((m.startswith('S') or (m.startswith('extra'))))
 )
 
 accepted_rnas = get_accepted_rnas(DIR_DNA)
