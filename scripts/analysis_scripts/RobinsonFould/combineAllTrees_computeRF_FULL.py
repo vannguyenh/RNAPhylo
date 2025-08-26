@@ -44,6 +44,10 @@ def extractAnalysedRNAs(log_file):
     unaccepted_rnas=list()
     accepted_rnas=list()
 
+    with open(log_file, 'r') as lf: #log file used for this 2025-07-21_21-04-55.log
+        lines = lf.readlines()
+
+
     for rna in rnas:
         # consider only the outputs from using DNA
         if check_branch_length(DIR_DNA, rna) == rna:
@@ -107,7 +111,7 @@ def computeRFdistance_iqtreecmd(dcombine_path, rna):
     run_command(command=command)
 
 def main():
-    dir_combined=join(DIR_OUTPUTS, 'Robinson_Foulds', MODEL)
+    dir_combined=join(DIR_OUTPUTS, 'Robinson_Foulds')
     os.makedirs(dir_combined, exist_ok=True)
 
     log_filename = os.path.join(DIR_RF_LOGS, f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.{MODEL}.log")
