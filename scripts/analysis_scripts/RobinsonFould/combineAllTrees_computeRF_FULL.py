@@ -95,6 +95,7 @@ def produceCombinedTree( dir_output, rna):
 
         if len(input_files) == 0:
             logging.warning(f"{rna} of {type} does not have any tree file.")
+            continue
         else:
             output_rna = join(dir_output, rna)
             os.makedirs(output_rna, exist_ok=True)
@@ -120,8 +121,8 @@ def computeRFdistance_iqtreecmd(dcombine_path, rna):
             raxTree=join(dir_combine_rna, f)
         elif f.endswith('raxmlPi'):
             raxPiPTree=join(dir_combine_rna, f)
-    logging.info(f"Compute the RF distance of {rna}.")
 
+    logging.info(f"Compute the RF distance of {rna}.")
     command=f"bash /Users/u7875558/Documents/Promotion/Projects/projects_code/RNAPhylo/scripts/analysis_scripts/RobinsonFould/computeRFdistance.sh {raxTree} {raxPiPTree} {dir_combine_rna} {rna}"
     run_command(command=command)
 
@@ -136,18 +137,19 @@ def main():
     rnas = extractAnalysedRNAs(log_file=log_filename)[0]
 
     for rna in rnas:
-        path=join(dir_combined, rna)
-        rfdist_file=0
-        if os.path.isdir(path):
-            for f in os.listdir(path):
-                if f.endswith('.rfdist'):
-                    rfdist_file += 1
-        
-        if rfdist_file != 3:
-            produceCombinedTree(dir_combined, rna)
-            computeRFdistance_iqtreecmd(dir_combined, rna)
-        else:
+        if len(os.listdir(join(DIR_RNA, rna))) != 50:
+            logging.warning(f"{rna} does not have 50 files in the inference folder.")
             continue
+        else:
+            path=join(dir_combined, rna)
+            rfdist_file=0
+            if os.path.isdir(path):
+                for f in os.listdir(path):
+                    if f.endswith('.rfdist'):
+                        rfdist_file += 1
+            if rfdist_file != 3:
+                produceCombinedTree(dir_combined, rna)
+                computeRFdistance_iqtreecmd(dir_combined, rna)
 
 if __name__=="__main__":
     main()
