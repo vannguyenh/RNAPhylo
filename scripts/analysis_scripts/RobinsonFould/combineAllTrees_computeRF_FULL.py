@@ -7,6 +7,8 @@ import subprocess
 import logging
 from datetime import datetime
 
+import re, sys, csv, pathlib
+
 LOG_FORMAT = '%(asctime)s - %(levelname)s - %(message)s'
 
 MODEL = 'S6A'
@@ -35,30 +37,43 @@ def check_branch_length(dir_output, rna):
     
     if len(delete_files) > 0:
         return rna
-    
+
 def extractAnalysedRNAs(log_file):
     # This function produces two sets of accepted RNAs -- RNAs containing pseudoknots and RNAs containing no pseudoknots    
     # extract accepted RNAs which do not have any branch length > 1
     rnas = os.listdir(DIR_RNA)
 
-    unaccepted_rnas=list()
+    brlength_larger1 =list()
     accepted_rnas=list()
 
-    with open(log_file, 'r') as lf: #log file used for this 2025-07-21_21-04-55.log
-        lines = lf.readlines()
+    less4_pat = re.compile(r'Number of sequences of (RF\d{5}) is less than 4\.')
+    unpaired_pat = re.compile(r'The secondary structure of (RF\d{5}) has only unpaired bases\.')  # note: "unpaired"
+    less4, unpaired = set(), set()
 
+    with open(log_file, 'r') as lf: #log file used for this full_S6A.log
+        for line in lf:
+            m1 = less4_pat.search(line)
+            if m1: less4.add(m1.group(1))
+            m2 = unpaired_pat.search(line)
+            if m2: unpaired.add(m2.group(1))
+    
+    both = less4 & unpaired
+    less_only = sorted(less4 - unpaired)
+    unpaired_only = sorted(unpaired - less4)
 
     for rna in rnas:
         # consider only the outputs from using DNA
         if check_branch_length(DIR_DNA, rna) == rna:
-            unaccepted_rnas.append(rna)
+            brlength_larger1.append(rna)
         else:
             accepted_rnas.append(rna)
+    
+    unaccepted_rnas = both & set(brlength_larger1)
     
     logging.info(f'{len(accepted_rnas)} can be used for the downstream analysis.')
     return accepted_rnas, unaccepted_rnas
 
-def produceCombinedTree(dir_input, dir_output, rna):
+def produceCombinedTree( dir_output, rna):
     os.makedirs(dir_output, exist_ok=True)
     # endings for output files
     endings= {
@@ -129,7 +144,7 @@ def main():
                     rfdist_file += 1
         
         if rfdist_file != 3:
-            produceCombinedTree(join(DIR_OUTPUTS, MODEL), dir_combined, rna)
+            produceCombinedTree(dir_combined, rna)
             computeRFdistance_iqtreecmd(dir_combined, rna)
         else:
             continue
