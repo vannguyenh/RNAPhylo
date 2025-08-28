@@ -6,7 +6,7 @@ raxPiPtree=$2
 prefix=$3
 rna=$4
 
-IQTREE="/Users/u7875558/tools/iqtree-2.3.6-macOS/bin/iqtree2"
+IQTREE="/Users/u7875558/Documents/promotion/projects/projects_code/iqtree3/build/iqtree3"
 
 ${IQTREE} -rf_all ${raxtree}
 #${IQTREE} -nt 1 -rf_all ${raxPwPtree}
