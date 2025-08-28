@@ -13,8 +13,8 @@ LOG_FORMAT = '%(asctime)s - %(levelname)s - %(message)s'
 
 MODEL = 'S6A'
 # change to the right pathway of DIR_DNA for FULL or SEED data
-DIR_WORKING = "/Users/u7875558/Documents/promotion/projects/RNAPhylo/fullAlignments_S6A"
-DIR_OUTPUTS = join(DIR_WORKING, "outputs", MODEL)
+DIR_WORKING = "/Users/u7875558/RNAPhylo/fullAlignment_S6A"
+DIR_OUTPUTS = join(DIR_WORKING, "outputs")
 DIR_RF_LOGS = join(DIR_WORKING, "logs", "RF_distance")
 os.makedirs(DIR_RF_LOGS, exist_ok=True)
 
@@ -26,14 +26,18 @@ def check_branch_length(dir_output, rna):
     dirRNA = join(dir_output, rna)
     delete_files=list()
 
-    for file_name in os.listdir(dirRNA):
-        for seed in expected_files:
-            if file_name.startswith('RAxML_bestTree') and file_name.endswith(seed):
-                tree_path=join(dirRNA, file_name)
-                tree=Phylo.read(tree_path, 'newick')
-                for clade in tree.find_clades():
-                    if clade.branch_length and clade.branch_length > 1:
-                        delete_files.append(file_name)
+    if dirRNA.startswith('RF'):
+        for file_name in os.listdir(dirRNA):
+            for seed in expected_files:
+                if file_name.startswith('RAxML_bestTree') and file_name.endswith(seed):
+                    tree_path=join(dirRNA, file_name)
+                    tree=Phylo.read(tree_path, 'newick')
+                    for clade in tree.find_clades():
+                        if clade.branch_length and clade.branch_length > 1:
+                            delete_files.append(file_name)
+                            logging.info(f"{file_name} has branch length > 1.")
+    else:
+        logging.warning(f"{dirRNA} is not an RNA folder.")
     
     if len(delete_files) > 0:
         return rna
@@ -41,7 +45,7 @@ def check_branch_length(dir_output, rna):
 def extractAnalysedRNAs(log_file):
     # This function produces two sets of accepted RNAs -- RNAs containing pseudoknots and RNAs containing no pseudoknots    
     # extract accepted RNAs which do not have any branch length > 1
-    rnas = os.listdir(DIR_RNA)
+    rnas = os.listdir(DIR_DNA)
 
     brlength_larger1 =list()
     accepted_rnas=list()
@@ -57,20 +61,21 @@ def extractAnalysedRNAs(log_file):
             m2 = unpaired_pat.search(line)
             if m2: unpaired.add(m2.group(1))
     
-    both = less4 & unpaired
-    less_only = sorted(less4 - unpaired)
-    unpaired_only = sorted(unpaired - less4)
+    #both = less4 & unpaired
+    #less_only = sorted(less4 - unpaired)
+    #unpaired_only = sorted(unpaired - less4)
 
     for rna in rnas:
         # consider only the outputs from using DNA
         if check_branch_length(DIR_DNA, rna) == rna:
             brlength_larger1.append(rna)
-        else:
+        elif (rna not in less4 and rna not in unpaired):
             accepted_rnas.append(rna)
     
-    unaccepted_rnas = both & set(brlength_larger1)
+    unaccepted_rnas = less4 | unpaired | set(brlength_larger1)
     
     logging.info(f'{len(accepted_rnas)} can be used for the downstream analysis.')
+    logging.info(f'{len(unaccepted_rnas)} cannot be used for the downstream analysis.')
     return accepted_rnas, unaccepted_rnas
 
 def produceCombinedTree( dir_output, rna):
@@ -123,21 +128,22 @@ def computeRFdistance_iqtreecmd(dcombine_path, rna):
             raxPiPTree=join(dir_combine_rna, f)
 
     logging.info(f"Compute the RF distance of {rna}.")
-    command=f"bash /Users/u7875558/Documents/Promotion/Projects/projects_code/RNAPhylo/scripts/analysis_scripts/RobinsonFould/computeRFdistance.sh {raxTree} {raxPiPTree} {dir_combine_rna} {rna}"
+    command=f"bash /Users/u7875558/Documents/promotion/projects/projects_code/RNAPhylo/scripts/analysis_scripts/RobinsonFould/computeRFdistance.sh {raxTree} {raxPiPTree} {dir_combine_rna} {rna}"
     run_command(command=command)
 
 def main():
     dir_combined=join(DIR_OUTPUTS, 'Robinson_Foulds')
     os.makedirs(dir_combined, exist_ok=True)
 
+    log_preprocess = join(DIR_WORKING, "logs", "full_S6A.log" )
     log_filename = os.path.join(DIR_RF_LOGS, f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.{MODEL}.log")
     logging.basicConfig(filename=log_filename, level=logging.DEBUG, format=LOG_FORMAT)
     logging.info(f"Running the code with the model {MODEL}.")
 
-    rnas = extractAnalysedRNAs(log_file=log_filename)[0]
+    rnas = extractAnalysedRNAs(log_file=log_preprocess)[0]
 
     for rna in rnas:
-        if len(os.listdir(join(DIR_RNA, rna))) != 50:
+        if os.path.exists(join(DIR_RNA, rna)) and len(os.listdir(join(DIR_RNA, rna))) != 50:
             logging.warning(f"{rna} does not have 50 files in the inference folder.")
             continue
         else:
@@ -150,6 +156,8 @@ def main():
             if rfdist_file != 3:
                 produceCombinedTree(dir_combined, rna)
                 computeRFdistance_iqtreecmd(dir_combined, rna)
+            else:
+                logging.info(f"The RF computation of {rna} is done.")
 
 if __name__=="__main__":
     main()
