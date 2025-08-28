@@ -132,11 +132,11 @@ def computeRFdistance_iqtreecmd(dcombine_path, rna):
     run_command(command=command)
 
 def main():
-    dir_combined=join(DIR_OUTPUTS, 'Robinson_Foulds')
+    dir_combined=join(DIR_OUTPUTS, 'Robinson_Foulds_iqtree3')
     os.makedirs(dir_combined, exist_ok=True)
 
     log_preprocess = join(DIR_WORKING, "logs", "full_S6A.log" )
-    log_filename = os.path.join(DIR_RF_LOGS, f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.{MODEL}.log")
+    log_filename = os.path.join(DIR_RF_LOGS, f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.normalisedRF.iqtree3.{MODEL}.log")
     logging.basicConfig(filename=log_filename, level=logging.DEBUG, format=LOG_FORMAT)
     logging.info(f"Running the code with the model {MODEL}.")
 
