@@ -1,6 +1,6 @@
 #!/bin/bash
 
-RAXML='/Users/u7875558/tools/standard-RAxML/raxmlHPC'
+RAXML='/Users/u7875558/tools/standard-RAxML-master/raxmlHPC'
 PATH_CONSEL='/Users/u7875558/tools/consel/bin'
 
 fasta_file=$1

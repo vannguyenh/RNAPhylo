@@ -145,7 +145,7 @@ def computeRFdistance_iqtreecmd(dcombine_path, rna):
     run_command(command)
 
 def main():
-    MODEL = 'S7C'
+    MODEL = 'S7F'
     dir_combined = join(DIR_OUTPUTS, 'Robinson_Foulds', MODEL)
     os.makedirs(dir_combined, exist_ok=True)
 
