@@ -20,17 +20,13 @@ Notes:
 
 import os
 from os.path import join, isdir
-from Bio import Phylo
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import normalize
-import matplotlib.pyplot as plt
-import seaborn as sns
-import logging
-from datetime import datetime
+from scipy.stats import mannwhitneyu
+from sklearn.preprocessing import normalize as _ignore   # not used; kept to show change
+from Bio import Phylo
+from statsmodels.stats.multitest import multipletests
 
-MODEL = 'S6A'
-LOG_FORMAT = '%(asctime)s - %(levelname)s - %(message)s'
 
 # ── PATHS (EDIT THESE) ─────────────────────────────────────────────────────────
 DIR_WORKING = "/Users/u7875558/RNAPhylo/fullAlignment_S6A"
@@ -40,18 +36,14 @@ DIR_DNA     = join(DIR_OUTPUTS, "DNAtrees")                  # fallback place to
 MODEL       = "S6A"                                          # label for outputs
 
 # File suffixes we expect inside each RNA folder
-SUFFIXES     = {
-    'DNA vs DNA':  '.raxml.rfdist',
-    'DNA vs RNA':  '.raxml.raxmlPi.rfdist',
-    'RNA vs RNA':  '.raxmlPi.rfdist'
-}
+DNA_RFDIST_SUFFIX       = ".raxml.rfdist"        # DNA vs DNA
+DNA_VS_RNA_IPSEU_SUFFIX = ".raxml.raxmlPi.rfdist"  # DNA vs RNA (ignore pseudoknots)
 
 # ── OPTIONS ────────────────────────────────────────────────────────────────────
 ALPHA = 0.05          # nominal alpha
 DO_BONFERRONI = True  # set False to skip adjusted p-values
 
-
-# ── FUNCTIONS ────────────────────────────────────────────────────────────────────
+# ── Helpers ────────────────────────────────────────────────────────────────────
 def read_rfdist_matrix(path: str) -> np.ndarray:
     """Read IQ-TREE .rfdist into a 2D array of floats. Returns empty array if nothing."""
     with open(path, "r") as f:
@@ -87,15 +79,16 @@ def find_one_tree_for_taxa(rna_dir: str, rna: str, dir_dna: str) -> str | None:
             return p
     return None
 
-# normalise the RF distance based on the number of taxa in the trees
-def count_taxa(treefile_path: str) -> int:
-    # the combined file has many trees; just read the first
+def count_taxa(tree_path: str) -> int | None:
     """Count terminals in the first tree from a Newick file."""
-    with open(treefile_path, 'r') as fh:
-        tree = next(Phylo.parse(fh, 'newick'))
-    return len(tree.get_terminals())
+    try:
+        with open(tree_path, "r") as fh:
+            tree = next(Phylo.parse(fh, "newick"))
+        return len(tree.get_terminals())
+    except Exception:
+        return None
 
-def normalize_rf_by_n(mat, n_taxa):
+def normalize_rf_matrix_by_n(mat: np.ndarray, n_taxa: int) -> np.ndarray:
     """
     Standard RF normalization to [0,1]:
       nRF = RF / (2*(n-3))  for unrooted binary trees.
@@ -174,7 +167,7 @@ def process_one_rna(rna_dir: str, rna: str) -> dict | None:
 # ── Driver ─────────────────────────────────────────────────────────────────────
 def main():
     if not isdir(DIR_RF):
-        raise SystemExit(f"Robison-Foulds folder not found: {DIR_RF}")
+        raise SystemExit(f"DIR_RF not found: {DIR_RF}")
 
     results = []
     rna_dirs = [d for d in sorted(os.listdir(DIR_RF)) if isdir(join(DIR_RF, d))]
@@ -198,6 +191,22 @@ def main():
         df_long["p_bonf"]   = (df_long["pvalue"] * m).clip(upper=1.0)
         df_long["sig_bonf"] = df_long["p_bonf"] < ALPHA
         print(f"Bonferroni significant @ {ALPHA}: {int(df_long['sig_bonf'].sum())} / {m}")
+
+    # ── Multiple testing (both Bonferroni and BH/FDR) using statsmodels ───────
+    pvals = df_long["pvalue"].values
+    
+    # Bonferroni
+    rej_bonf, p_bonf, _, _ = multipletests(pvals, alpha=ALPHA, method="bonferroni")
+    df_long["p_bonf"] = p_bonf
+    df_long["sig_bonf"] = rej_bonf
+
+    # Benjamini–Hochberg (FDR)
+    rej_bh, p_bh, _, _ = multipletests(pvals, alpha=ALPHA, method="fdr_bh")
+    df_long["p_fdr_bh"] = p_bh
+    df_long["sig_fdr_bh"] = rej_bh
+
+    print(f"Bonferroni significant @ {ALPHA}: {int(df_long['sig_bonf'].sum())} / {len(df_long)}")
+    print(f"FDR (BH) significant @ {ALPHA}: {int(df_long['sig_fdr_bh'].sum())} / {len(df_long)}")
 
     # Wide p-value table (RNA × Model) — useful even for one model
     df_wide = (
