@@ -1,5 +1,5 @@
 import os
-from os.path import join
+from os.path import join, isfile
 
 from Bio import Phylo
 import logging
@@ -194,7 +194,8 @@ def main():
         prefix_consel = join(persite_path, f'{rna}_ipseu_consel')
 
         ss_file = join(DIR_SS, f'{rna}.ss')
-        if rna in os.listdir(DIR_SUB):
+
+        if isfile(join(DIR_SUB, f'{rna}.subsamp.fa')):
             fasta_file = join(DIR_SUB, f'{rna}.subsamp.fa')
         else:
             fasta_file = join(DIR_FASTA, f'{rna}.nodup.fa')
@@ -214,7 +215,7 @@ def main():
             run_command(f"rm -rf {persite_path}")
             os.makedirs(persite_path, exist_ok=True)
             ss_file = join(DIR_SS, f'{rna}.ss.reduced')
-            if rna in os.listdir(DIR_SUB):
+            if isfile(join(DIR_SUB, f'{rna}.subsamp.fa.reduced')):
                 fasta_file = join(DIR_SUB, f'{rna}.subsamp.fa.reduced')
             else:
                 fasta_file = join(DIR_FASTA, f'{rna}.nodup.fa.reduced')
