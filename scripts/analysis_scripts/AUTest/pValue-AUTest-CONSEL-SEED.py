@@ -7,16 +7,17 @@ from datetime import datetime
 import time
 import subprocess
 
-DIR_WORKING = '/Users/u7875558/Documents/RNAPhylo/allModels_SEED'
+DIR_WORKING = '/Users/u7875558/RNAPhylo/fullAlignment_S6A'
 DIR_OUTPUTS = join(DIR_WORKING, 'outputs')
-DIR_DNA = join(DIR_OUTPUTS, 'DNAtrees')
+DIR_TREES = join(DIR_OUTPUTS, 'inferred_trees')
+DIR_DNA = join(DIR_TREES, 'DNAtrees')
 #MODEL = 'S6A'
 
 DIR_INPUTS = join(DIR_WORKING, 'inputs')
 DIR_FASTA = join(DIR_INPUTS, 'fasta_files')
 DIR_SS = join(DIR_INPUTS, 'ss_files')
 
-TREE_OUTPUT = join(DIR_OUTPUTS, 'combinedFiles')
+TREE_OUTPUT = join(DIR_OUTPUTS, 'combinedFiles_2highestLH')
 LOG_FILE='/Users/u7875558/Documents/RNAPhylo/allModels_SEED/logs/2025-03-21_10-08-12.log'
 
 SUBFOLDERS=['raxml', 'raxmlP_wPseu', 'raxmlP_iPseu']
