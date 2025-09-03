@@ -14,7 +14,7 @@ DIR_WORKING = '/Users/u7875558/RNAPhylo/fullAlignment_S6A'
 DIR_OUTPUTS = join(DIR_WORKING, 'outputs')
 DIR_TREES = join(DIR_OUTPUTS, 'inferred_trees')
 DIR_DNA = join(DIR_TREES, 'DNA')
-DIR_AU_LOGS = join(DIR_WORKING, "logs", "AU_test")
+DIR_AU_LOGS = join(DIR_WORKING, "logs", "AU_test_RAxML-NG")
 os.makedirs(DIR_AU_LOGS, exist_ok=True)
 #MODEL = 'S6A'
 
@@ -154,7 +154,8 @@ def run_bash(command):
 
 def runningCONSEL(rna, model, group, fasta_file, ss_file, persite_suffix, persite_path, prefix_consel, dir_combined):
     combineTree = join(dir_combined, f'{rna}.{group}.highestLH.trees')
-    output_persite = join(persite_path, f'RAxML_perSiteLLs.{persite_suffix}')
+    #output_persite = join(persite_path, f'RAxML_perSiteLLs.{persite_suffix}')
+    output_persite = join(persite_path, f'{persite_suffix}.raxml.siteLH')
     
     if model.startswith('S'):
         bash_file = ' /Users/u7875558/Documents/promotion/projects/projects_code/RNAPhylo/scripts/analysis_scripts/AUTest/consel.sh'
@@ -168,9 +169,16 @@ def run_command(command):
     process = subprocess.Popen(command, shell=True)
     process.communicate()
 
+def has_sitelh(dirpath: str) -> bool:
+    """Return True if any file in dirpath ends with *sitelh (case-insensitive)."""
+    try:
+        return any(fn.lower().endswith('sitelh') for fn in os.listdir(dirpath))
+    except FileNotFoundError:
+        return False
+
 def main():
     MODEL = 'S6A'
-    DIR_AU = join(DIR_OUTPUTS, 'AU_Test')
+    DIR_AU = join(DIR_OUTPUTS, 'AU_Test_RAxMLNG')
     os.makedirs(DIR_AU, exist_ok=True)
     DIR_COMBINE = join(DIR_AU, 'combine_2trees_highestLH')
     os.makedirs(DIR_COMBINE, exist_ok=True)
@@ -197,7 +205,7 @@ def main():
 
         if isfile(join(DIR_SUB, f'{rna}.subsamp.fa')):
             fasta_file = join(DIR_SUB, f'{rna}.subsamp.fa')
-        else:
+        elif isfile(join(DIR_FASTA, f'{rna}.nodup.fa')):
             fasta_file = join(DIR_FASTA, f'{rna}.nodup.fa')
 
         try:
@@ -206,23 +214,34 @@ def main():
         except Exception as e:
             logging.error(f"Error with {rna}: {e}")
 
-        count = 0
-        for f in os.listdir(persite_path):
-            if f.startswith(f'{rna}'):
-                count += 1
-                
-        if count != 4:
+        # If we already have a *.sitelh, move on
+        if has_sitelh(persite_path):
+            logging.info(f'{rna} ran with CONSEL (found *.sitelh).')
+        else:
+            # Retry with reduced inputs
             run_command(f"rm -rf {persite_path}")
             os.makedirs(persite_path, exist_ok=True)
-            ss_file = join(DIR_SS, f'{rna}.ss.reduced')
+
+            # Use reduced SS and reduced FASTA if present
+            ss_file = join(DIR_SS, f'{rna}.ss.reduced') if isfile(join(DIR_SS, f'{rna}.ss.reduced')) else ss_file
             if isfile(join(DIR_SUB, f'{rna}.subsamp.fa.reduced')):
-                fasta_file = join(DIR_SUB, f'{rna}.subsamp.fa.reduced')
+                fasta_file_red = join(DIR_SUB, f'{rna}.subsamp.fa.reduced')
+            elif isfile(join(DIR_FASTA, f'{rna}.nodup.fa.reduced')):
+                fasta_file_red = join(DIR_FASTA, f'{rna}.nodup.fa.reduced')
             else:
-                fasta_file = join(DIR_FASTA, f'{rna}.nodup.fa.reduced')
+                logging.warning(f'No reduced FASTA found for {rna}; skipping reduced attempt.')
+                fasta_file_red = None
 
-            runningCONSEL(rna, MODEL, 'iPseu', fasta_file, ss_file, persite_suffix, persite_path, prefix_consel, DIR_COMBINE)
-            logging.info(f"Reduced RNAs: CONSEL is running with {rna} ignoring pseudoknots.")
-
+            if fasta_file_red is not None:
+                runningCONSEL(
+                    rna, MODEL, 'iPseu',
+                    fasta_file_red, ss_file,
+                    persite_suffix, persite_path, prefix_consel, DIR_COMBINE
+                )
+                if has_sitelh(persite_path):
+                    logging.info(f"{rna}: reduced attempt produced *.sitelh.")
+                else:
+                    logging.error(f"{rna}: reduced attempt still did not produce *.sitelh.")
     
 if __name__=='__main__':
     main()
