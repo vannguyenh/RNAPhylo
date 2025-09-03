@@ -33,8 +33,8 @@ ${PATH_CONSEL}/makermt --puzzle ${output_persite} ${prefix_consel}
 ${PATH_CONSEL}/consel ${prefix_consel}
 
 # /Users/u7875558/Documents/PhD/tools/consel/bin/makermt 
-# --puzzle /Users/u7875558/Library/CloudStorage/OneDrive-AustralianNationalUniversity/Documents/PhD/Rfam/RfamPhylo/analysis/outputs/tmp_test/test_raxml_persitelh/RF02052/persitelh/RAxML_perSiteLLs.RF02052.raxml_inSS.sitelh 
-# /Users/u7875558/Library/CloudStorage/OneDrive-AustralianNationalUniversity/Documents/PhD/Rfam/RfamPhylo/analysis/outputs/tmp_test/test_raxml_persitelh/RF02052/consel/persite_test
+# --puzzle test_raxml_persitelh/RF02052/persitelh/RAxML_perSiteLLs.RF02052.raxml_inSS.sitelh 
+# test_raxml_persitelh/RF02052/consel/persite_test
 
 # /Users/u7875558/Documents/PhD/tools/consel/bin/consel /Users/u7875558/Library/CloudStorage/OneDrive-AustralianNationalUniversity/Documents/PhD/Rfam/RfamPhylo/analysis/outputs/tmp_test/test_raxml_persitelh/RF02052/consel/persite_test
 
