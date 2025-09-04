@@ -16,14 +16,12 @@ DIR_TREES = join(DIR_OUTPUTS, 'inferred_trees')
 DIR_DNA = join(DIR_TREES, 'DNA')
 DIR_AU_LOGS = join(DIR_WORKING, "logs", "AU_test_RAxML-NG")
 os.makedirs(DIR_AU_LOGS, exist_ok=True)
-#MODEL = 'S6A'
 
 DIR_INPUTS = join(DIR_WORKING, 'inputs')
 DIR_FASTA = join(DIR_INPUTS, 'fasta')
 DIR_SUB = join(DIR_INPUTS, 'subsample')
 DIR_SS = join(DIR_INPUTS, 'ss_all')
 
-TREE_OUTPUT = join(DIR_OUTPUTS, 'combinedFiles_2highestLH')
 LOG_FILE=join(DIR_WORKING, 'logs', 'full_S6A.log')
 
 SUBFOLDERS=['raxml', 'raxmlP_wPseu', 'raxmlP_iPseu']
@@ -152,17 +150,13 @@ def run_bash(command):
         logging.error(f"Bash command failed: {command}")
     return process.returncode
 
-def runningCONSEL(rna, model, group, fasta_file, ss_file, persite_suffix, persite_path, prefix_consel, dir_combined):
+def runningCONSEL(rna, group, fasta_file, ss_file, persite_suffix, persite_path, prefix_consel, dir_combined):
     combineTree = join(dir_combined, f'{rna}.{group}.highestLH.trees')
     #output_persite = join(persite_path, f'RAxML_perSiteLLs.{persite_suffix}')
     output_persite = join(persite_path, f'{persite_suffix}.raxml.siteLH')
     
-    if model.startswith('S'):
-        bash_file = ' /Users/u7875558/Documents/promotion/projects/projects_code/RNAPhylo/scripts/analysis_scripts/AUTest/consel.sh'
-        consel_command = f"bash {bash_file} {fasta_file} {combineTree} {persite_suffix} {ss_file} {persite_path} {output_persite} {prefix_consel} {model}"
-    else:
-        bash_file = ' /Users/u7875558/Documents/promotion/projects/projects_code/RNAPhylo/scripts/analysis_scripts/AUTest/consel_DNA.sh'
-        consel_command =  f"bash {bash_file} {fasta_file} {combineTree} {persite_suffix} {persite_path} {output_persite} {prefix_consel}"
+    bash_file = ' /Users/u7875558/Documents/promotion/projects/projects_code/RNAPhylo/scripts/analysis_scripts/AUTest/consel.sh'
+    consel_command = f"bash {bash_file} {fasta_file} {combineTree} {persite_suffix} {ss_file} {persite_path} {output_persite} {prefix_consel}"
     run_bash(consel_command)
 
 def run_command(command):
@@ -193,55 +187,57 @@ def main():
         if bestTrees is not None:
             dnaTree = join(DIR_DNA, rna, f"RAxML_bestTree.{rna}.{bestTrees['DNA'][0]}")
             rnaTree = join(DIR_TREES, MODEL, rna, f"RAxML_bestTree.{rna}.{bestTrees['RNA ignoring pseudoknots'][0]}")
+            combineTreeFiles(DIR_COMBINE, rna, 'iPseu', dnaTree, rnaTree)
 
-        combineTreeFiles(DIR_COMBINE, rna, 'iPseu', dnaTree, rnaTree)
-            
-        persite_path = join(DIR_AU, 'ignore_pseudo', rna)
-        os.makedirs(persite_path, exist_ok=True)
-        persite_suffix = f'{rna}.ipseu.sitelh'
-        prefix_consel = join(persite_path, f'{rna}_ipseu_consel')
-
-        ss_file = join(DIR_SS, f'{rna}.ss')
-
-        if isfile(join(DIR_SUB, f'{rna}.subsamp.fa')):
-            fasta_file = join(DIR_SUB, f'{rna}.subsamp.fa')
-        elif isfile(join(DIR_FASTA, f'{rna}.nodup.fa')):
-            fasta_file = join(DIR_FASTA, f'{rna}.nodup.fa')
-
-        try:
-            runningCONSEL(rna, MODEL, 'iPseu', fasta_file, ss_file, persite_suffix, persite_path, prefix_consel, DIR_COMBINE)
-            logging.info(f"CONSEL is running with {rna} ignoring pseudoknots.")
-        except Exception as e:
-            logging.error(f"Error with {rna}: {e}")
-
-        # If we already have a *.sitelh, move on
-        if has_sitelh(persite_path):
-            logging.info(f'{rna} ran with CONSEL (found *.sitelh).')
-        else:
-            # Retry with reduced inputs
-            run_command(f"rm -rf {persite_path}")
+            persite_path = join(DIR_AU, 'ignore_pseudo', rna)
             os.makedirs(persite_path, exist_ok=True)
+            persite_suffix = f'{rna}.ipseu.sitelh'
+            prefix_consel = join(persite_path, f'{rna}_ipseu_consel')
 
-            # Use reduced SS and reduced FASTA if present
-            ss_file = join(DIR_SS, f'{rna}.ss.reduced') if isfile(join(DIR_SS, f'{rna}.ss.reduced')) else ss_file
-            if isfile(join(DIR_SUB, f'{rna}.subsamp.fa.reduced')):
-                fasta_file_red = join(DIR_SUB, f'{rna}.subsamp.fa.reduced')
-            elif isfile(join(DIR_FASTA, f'{rna}.nodup.fa.reduced')):
-                fasta_file_red = join(DIR_FASTA, f'{rna}.nodup.fa.reduced')
+            ss_file = join(DIR_SS, f'{rna}.ss')
+
+            if isfile(join(DIR_SUB, f'{rna}.subsamp.fa')):
+                fasta_file = join(DIR_SUB, f'{rna}.subsamp.fa')
+            elif isfile(join(DIR_FASTA, f'{rna}.nodup.fa')):
+                fasta_file = join(DIR_FASTA, f'{rna}.nodup.fa')
+
+            try:
+                runningCONSEL(rna, MODEL, 'iPseu', fasta_file, ss_file, persite_suffix, persite_path, prefix_consel, DIR_COMBINE)
+                logging.info(f"CONSEL is running with {rna} ignoring pseudoknots.")
+            except Exception as e:
+                logging.error(f"Error with {rna}: {e}")
+
+            # If we already have a *.sitelh, move on
+            if has_sitelh(persite_path):
+                logging.info(f'{rna} ran with CONSEL (found *.sitelh).')
             else:
-                logging.warning(f'No reduced FASTA found for {rna}; skipping reduced attempt.')
-                fasta_file_red = None
+                # Retry with reduced inputs
+                run_command(f"rm -rf {persite_path}")
+                os.makedirs(persite_path, exist_ok=True)
 
-            if fasta_file_red is not None:
-                runningCONSEL(
-                    rna, MODEL, 'iPseu',
-                    fasta_file_red, ss_file,
-                    persite_suffix, persite_path, prefix_consel, DIR_COMBINE
-                )
-                if has_sitelh(persite_path):
-                    logging.info(f"{rna}: reduced attempt produced *.sitelh.")
+                # Use reduced SS and reduced FASTA if present
+                ss_file = join(DIR_SS, f'{rna}.ss.reduced') if isfile(join(DIR_SS, f'{rna}.ss.reduced')) else ss_file
+                if isfile(join(DIR_SUB, f'{rna}.subsamp.fa.reduced')):
+                    fasta_file_red = join(DIR_SUB, f'{rna}.subsamp.fa.reduced')
+                elif isfile(join(DIR_FASTA, f'{rna}.nodup.fa.reduced')):
+                    fasta_file_red = join(DIR_FASTA, f'{rna}.nodup.fa.reduced')
                 else:
-                    logging.error(f"{rna}: reduced attempt still did not produce *.sitelh.")
+                    logging.warning(f'No reduced FASTA found for {rna}; skipping reduced attempt.')
+                    fasta_file_red = None
+
+                if fasta_file_red is not None:
+                    runningCONSEL(
+                        rna,'iPseu',
+                        fasta_file_red, ss_file,
+                        persite_suffix, persite_path, prefix_consel, DIR_COMBINE
+                    )
+                    if has_sitelh(persite_path):
+                        logging.info(f"{rna}: reduced attempt produced *.sitelh.")
+                    else:
+                        logging.error(f"{rna}: reduced attempt still did not produce *.sitelh.")
+        else:
+            logging.warning(f"{rna} has either under DNA or RNA model no tree inference.")
+        
     
 if __name__=='__main__':
     main()
