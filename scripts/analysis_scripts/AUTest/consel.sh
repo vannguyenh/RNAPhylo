@@ -22,7 +22,8 @@ prefix_consel=$7
 
 ### RAxML-NG for per-site log-likelihood due to the issue with the old version of RAxML
 ${RAXNG} --sitelh --msa ${fasta_file} --model GTR+G --tree ${combineTree} --prefix ${persite_path}/${persite_suffix} --redo
-
+# raxml-ng --sitelh --msa inputs/fasta_files/RF01959.nodup.fa --model GTR+G 
+# --tree ../../combine_2trees_highestLH/RF01959.iPseu.highestLH.trees --prefix RF01959.ipseu.sitelh
 ### CONSEL program
 # CONSEL does not work with parsing the directory to save the file -> have to direct the folder for saving - WRONG
 # CONSEL works with directory but the name has to be one word or word1_word2 (not word1.word2)
@@ -31,8 +32,6 @@ ${RAXNG} --sitelh --msa ${fasta_file} --model GTR+G --tree ${combineTree} --pref
 ${PATH_CONSEL}/makermt --puzzle ${output_persite} ${prefix_consel}
 ${PATH_CONSEL}/consel ${prefix_consel}
 
-# /Users/u7875558/Documents/PhD/tools/consel/bin/makermt 
-# --puzzle test_raxml_persitelh/RF02052/persitelh/RAxML_perSiteLLs.RF02052.raxml_inSS.sitelh 
-# test_raxml_persitelh/RF02052/consel/persite_test
-
+# rmt --puzzle RF00163.ipseu.sitelh.raxml.siteLH RF00163_ipseu_consel 
+# consel RF00163_ipseu_consel
 #${PATH_CONSEL}/catpv
