@@ -186,7 +186,8 @@ def main():
         bestTrees = extract_highestLH_2Trees_ipseudo(join(DIR_TREES, MODEL), rna)
         if bestTrees is not None:
             dnaTree = join(DIR_DNA, rna, f"RAxML_bestTree.{rna}.{bestTrees['DNA'][0]}")
-            rnaTree = join(DIR_TREES, MODEL, rna, f"RAxML_bestTree.{rna}.{bestTrees['RNA ignoring pseudoknots'][0]}")
+            rnaTree = join(DIR_TREES, MODEL, rna, 
+                           f"RAxML_bestTree.{rna}.{bestTrees['RNA ignoring pseudoknots'][0]}")
             combineTreeFiles(DIR_COMBINE, rna, 'iPseu', dnaTree, rnaTree)
 
             persite_path = join(DIR_AU, 'ignore_pseudo', rna)

@@ -114,22 +114,12 @@ def extract_highestLH_2Trees_pseudo(dir_output, rna):
     else:
         return None
     
-def extract_highestLH_2Trees_ipseudo(dir_output, rna):
+def extract_highestLH_2Trees_ipseudo_dnaextra(dir_output, rna):
     raxTree_path = join(DIR_DNA, rna)
-    raxPiTree_path = join(dir_output, SUBFOLDERS[2], rna)
+    raxPiTree_path = join(dir_output, rna)
     if check_inferred_tree(raxTree_path) and check_inferred_tree(raxPiTree_path):
         bestTreesLH = {'DNA': extract_highestloglh(raxTree_path),
-                       'RNA ignoring pseudoknots': extract_highestloglh(raxPiTree_path)}
-        return bestTreesLH
-    else:
-        return None
-
-def extract_highestLH_2Trees_DNA(dir_output, rna):
-    raxTree_path = join(DIR_DNA, rna)
-    raxTree_extra_path = join(dir_output, rna)
-    if check_inferred_tree(raxTree_path) and check_inferred_tree(raxTree_extra_path):
-        bestTreesLH = {'DNA': extract_highestloglh(raxTree_path),
-                       'extra DNA': extract_highestloglh(raxTree_extra_path)}
+                       'RNA_otherDNA': extract_highestloglh(raxPiTree_path)}
         return bestTreesLH
     else:
         return None
@@ -150,16 +140,13 @@ def run_bash(command):
         logging.error(f"Bash command failed: {command}")
     return process.returncode
 
-def runningCONSEL(rna, model, group, fasta_file, ss_file, persite_suffix, persite_path, prefix_consel, dir_combined):
+def runningCONSEL(rna, group, fasta_file, ss_file, persite_suffix, persite_path, prefix_consel, dir_combined):
     combineTree = join(dir_combined, f'{rna}.{group}.highestLH.trees')
     output_persite = join(persite_path, f'RAxML_perSiteLLs.{persite_suffix}')
     
-    if model.startswith('S'):
-        bash_file = '/Users/u7875558/Documents/RNAPhylo/RNAPhylo/scripts/analysis_scripts/AUTest/consel.sh'
-        consel_command = f"bash {bash_file} {fasta_file} {combineTree} {persite_suffix} {ss_file} {persite_path} {output_persite} {prefix_consel} {model}"
-    else:
-        bash_file = '/Users/u7875558/Documents/RNAPhylo/RNAPhylo/scripts/analysis_scripts/AUTest/consel_DNA.sh'
-        consel_command =  f"bash {bash_file} {fasta_file} {combineTree} {persite_suffix} {persite_path} {output_persite} {prefix_consel}"
+    bash_file = '/Users/u7875558/Documents/RNAPhylo/RNAPhylo/scripts/analysis_scripts/AUTest/consel.sh'
+    consel_command = f"bash {bash_file} {fasta_file} {combineTree} {persite_suffix} {ss_file} {persite_path} {output_persite} {prefix_consel}"
+
     run_bash(consel_command)
 
 def run_command(command):
@@ -214,22 +201,14 @@ def main():
     #         logging.warning(f"{rna} considering pseudoknots has issue with the tree files.")
     
     for rna in rnas:
-        if MODEL.startswith('S'):
-            bestTrees = extract_highestLH_2Trees_ipseudo(join(DIR_OUTPUTS, MODEL), rna)
-            if bestTrees is not None:
-                dnaTree = join(DIR_DNA, rna, f"RAxML_bestTree.{rna}.{bestTrees['DNA'][0]}")
-                rnaTree = join(DIR_OUTPUTS, MODEL, 'raxmlP_iPseu', rna, f"RAxML_bestTree.{rna}.{bestTrees['RNA ignoring pseudoknots'][0]}")
-                combineTreeFiles(DIR_COMBINE, rna, 'iPseu', dnaTree, rnaTree)
-            else:
-                logging.warning(f"{rna} has either under DNA or RNA model no tree inference.")
+        bestTrees = extract_highestLH_2Trees_ipseudo_dnaextra(join(DIR_TREES, MODEL), rna)
+        if bestTrees is not None:
+            dnaTree = join(DIR_DNA, rna, f"RAxML_bestTree.{rna}.{bestTrees['DNA'][0]}")
+            rnaTree = join(DIR_TREES, MODEL, rna, 
+                           f"RAxML_bestTree.{rna}.{bestTrees['RNA_otherDNA'][0]}")
+            combineTreeFiles(DIR_COMBINE, rna, 'iPseu', dnaTree, rnaTree)
         else:
-            bestTrees = extract_highestLH_2Trees_DNA(join(DIR_OUTPUTS, MODEL), rna)
-            if bestTrees is not None:
-                dnaTree = join(DIR_DNA, rna, f"RAxML_bestTree.{rna}.{bestTrees['DNA'][0]}")
-                rnaTree = join(DIR_OUTPUTS, MODEL, rna, f"RAxML_bestTree.{rna}.{bestTrees['extra DNA'][0]}")
-                combineTreeFiles(DIR_COMBINE, rna, 'iPseu', dnaTree, rnaTree)
-            else:
-                logging.warning(f"{rna} has either under DNA model no tree inference.")
+            logging.warning(f"{rna} has either under DNA or RNA model no tree inference.")
         
         if isfile(join(DIR_COMBINE, f'{rna}.iPseu.highestLH.trees')):
             persite_path = join(DIR_WORKING, 'ignore_pseudo', rna)
@@ -272,6 +251,8 @@ def main():
                         logging.info(f"{rna}: reduced attempt produced *.sitelh.")
                     else:
                         logging.error(f"{rna}: reduced attempt still did not produce *.sitelh.")
+        else:
+            logging.warning(f'{rna} has no combined file.')
 
     
 if __name__=='__main__':
