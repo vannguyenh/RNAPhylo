@@ -16,8 +16,8 @@ from Bio import Phylo
 
 # ─── USER PARAMETERS ───────────────────────────────────────────────────────────
 
-#DIR_WORKING     = '/Users/u7875558/Documents/PhD/RNAPhylo/allModels_SEED'
-DIR_WORKING = '/Users/u7875558/RNAPhylo/fullAlignment_S6A'
+DIR_WORKING     = '/Users/u7875558/RNAPhylo/seedAlignment_AllModels'
+#DIR_WORKING = '/Users/u7875558/RNAPhylo/fullAlignment_S6A'
 DIR_OUTPUTS     = join(DIR_WORKING, 'outputs')
 DIR_DNA         = join(DIR_OUTPUTS, 'DNA')
 # CONSEL outputs: outputs/AU_Test_RAxMLNG/<model>/ignore_pseudo/<RNA>/<RNA>_ipseu_consel.pv
@@ -75,12 +75,12 @@ def main():
     # Build DataFrame and pivot to wide format
     df = pd.DataFrame(records)
     print(df.head())
-    full_csv = join(DIR_AU, 'AU_pValues_FULL_full.csv')
+    full_csv = join(DIR_AU, 'AU_pValues_bothpVals_SEED.csv')
     df.to_csv(full_csv, sep='\t')
 
     df_table = df.pivot(index='RNA_family', columns='Model', values='p_RNA_raw').sort_index()
     print(df_table.head())
-    out_csv = join(DIR_AU, 'AU_pvalues_FULL_RNApVal.csv' )
+    out_csv = join(DIR_AU, 'AU_pvalues_RNApVal_SEED.csv' )
     df_table.to_csv(out_csv)
     print(f"Saved p-values from AU test of all models to: {full_csv}, {out_csv}")
 
