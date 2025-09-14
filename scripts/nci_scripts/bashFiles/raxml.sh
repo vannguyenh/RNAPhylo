@@ -9,5 +9,5 @@ mkdir -p $PREFIX
 
 for i in {11..20}; do
     formatted_i=$(printf "%02d" $i)
-    $RAXML -s $FASTA_FILE -n ${RF}.${formatted_i} -m GTRGAMMA -p $i -w ${PREFIX}
+    $RAXML -s $FASTA_FILE -n ${RF}.${formatted_i} -m GTRGAMMA -p $i -w ${PREFIX} #qsub command line here. -- each command line takes 1 cpus.
 done
