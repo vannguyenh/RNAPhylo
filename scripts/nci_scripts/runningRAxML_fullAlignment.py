@@ -56,7 +56,7 @@ def main():
     rnas = [rna.split('.')[0] for rna in os.listdir(DIR_FASTA)]
     rnas_subsamp = [rna.split('.')[0] for rna in os.listdir(DIR_SUBSAMP)]
 
-    for rna in rnas:
+    for rna in rnas: # sort the rna -- the biggest first, then the smallest later.
         ss_file = join(DIR_SS, f"{rna}.ss")
         if rna in rnas_subsamp:
             fasta_file = join(DIR_SUBSAMP, f"{rna}.subsamp.fa")
@@ -72,7 +72,7 @@ def main():
                 logging.warning(f"{raxml_prefix} has not been run yet or not run enough for 10 trees.")
                 raxml_command = (
                     f"qsub -V -N raxml_{rna} -o {log_filename} -e {log_filename} "
-                    f"-l ncpus=12 -l mem=48gb -l walltime=48:00:00 -l wd -- "
+                    f"-l ncpus=1 -l mem=4gb -l walltime=48:00:00 -l wd -- " #recommend: including threads or reduce ncpus to 1
                     f"bash /scratch/dx61/vh5686/tmp/RNAPhylo/scripts/bashFiles/raxml.sh {rna} {fasta_file} {raxml_prefix} {RAXML_EXECUTE}"
                 )
                 run_command(raxml_command)
@@ -81,7 +81,7 @@ def main():
                 logging.warning(f"{raxmlPiPseu_prefix} has not been run yet or not run enough for 10 trees.")
                 raxmlPiPseu_command = (
                     f"qsub -V -N raxmlP_{rna} -o {log_filename} -e {log_filename} "
-                    f"-l ncpus=24 -l mem=96gb -l walltime=48:00:00 -l wd -- "
+                    f"-l ncpus=1 -l mem=48gb -l walltime=48:00:00 -l wd -- " # default of RAxML 1 core.
                     f"bash /scratch/dx61/vh5686/tmp/RNAPhylo/scripts/bashFiles/raxmlP.sh {rna} {fasta_file} {ss_file} {raxmlPiPseu_prefix} {MODEL} {RAXML_EXECUTE}"  
                 )
                 run_command(raxmlPiPseu_command)
