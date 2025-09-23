@@ -44,6 +44,6 @@ mkdir -p "$outdir"
     -s "${input_path}/fasta_files/${RNA}.nodup.fa" \
     -S "${input_path}/ss_files/${RNA}.dots.ss" \
     -t "${inferred_path}/S6A/${RNA}/RAxML_bestTree.${RNA}.${format_seedRNA}" \
-    -z "${outdir}/RAxML_bootstrap.${RNA}.rna.${format_seedDNA}.bstr" \
+    -z "${outdir}/RAxML_bootstrap.${RNA}.rna.${format_seedRNA}.bstr" \
     -w "$outdir" \
     -n "${RNA}_RNA"
