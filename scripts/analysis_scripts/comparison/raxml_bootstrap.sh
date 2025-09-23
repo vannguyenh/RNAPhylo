@@ -38,7 +38,7 @@ mkdir -p "$outdir"
     -S "${input_path}/ss_files/${RNA}.dots.ss" \
     -p "${SEED_RNA}" -b "${SEED_RNA}" -# 100 \
     -w "$outdir" \
-    -n "${RNA}.rna.${formatted_seedRNA}.bstr"
+    -n "${RNA}.rna.${format_seedRNA}.bstr"
 
 "$RAXML" -f b -m GTRGAMMA -A S6A \
     -s "${input_path}/fasta_files/${RNA}.nodup.fa" \
