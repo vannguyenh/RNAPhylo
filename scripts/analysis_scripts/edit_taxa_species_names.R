@@ -422,3 +422,217 @@ dev.off()
 
 
 ########## RF00740
+library(ape)
+library(rentrez)
+library(stringr)
+
+# Sys.setenv(ENTREZ_EMAIL="you@anu.edu.au")  # recommended
+# set_entrez_key("YOUR_API_KEY")             # optional (faster)
+
+# ---- helpers ----
+unquote_newick <- function(x) sub("^'(.*)'$", "\\1", x)
+
+extract_taxid <- function(label) {
+  m <- str_match(label, "\\[(\\d+)\\]")[,2]
+  as.integer(m)
+}
+
+is_urs <- function(label) grepl("_URS[0-9A-F]+", label, ignore.case = TRUE) | grepl("^URS[0-9A-F]+", label, ignore.case = TRUE)
+
+# fetch scientific/common name from NCBI taxonomy
+fetch_taxon_names <- function(taxids) {
+  taxids <- unique(na.omit(taxids))
+  out <- data.frame(taxid = taxids, sci = NA_character_, common = NA_character_, stringsAsFactors = FALSE)
+  for (i in seq_along(taxids)) {
+    s <- tryCatch(entrez_summary(db="taxonomy", id=taxids[i]), error=function(e) NULL)
+    if (!is.null(s)) {
+      out$sci[i]    <- s$scientificname %||% NA_character_
+      out$common[i] <- s$commonname     %||% NA_character_
+    }
+    Sys.sleep(0.34) # be polite unless you use an API key
+  }
+  out
+}
+`%||%` <- function(a,b) if (!is.null(a)) a else b
+
+# build pretty labels for a vector of tip labels
+labels_from_urs_or_keep <- function(tips, style=c("sci_common","sci_only")) {
+  style <- match.arg(style)
+  taxid <- extract_taxid(tips)
+  has_urs <- is_urs(tips) & !is.na(taxid)
+  
+  # fetch names for the taxids we need
+  lut <- fetch_taxon_names(taxid[has_urs])
+  
+  # start with original labels
+  new <- tips
+  
+  # replace URS labels with "Genus species (common name)" or just sci name
+  if (nrow(lut)) {
+    for (i in which(has_urs)) {
+      row <- lut[lut$taxid == taxid[i], ]
+      if (nrow(row) == 1 && !is.na(row$sci)) {
+        lab <- switch(style,
+                      sci_common = if (!is.na(row$common) && nzchar(row$common))
+                        sprintf("%s (%s)", row$sci, row$common) else row$sci,
+                      sci_only   = row$sci)
+        new[i] <- paste0("'", gsub("'", "''", lab, fixed = TRUE), "'")
+      }
+    }
+  }
+  
+  # disambiguate exact duplicates by appending [taxid]
+  uq <- make.unique(new, sep=" _")
+  dup <- duplicated(uq) | duplicated(uq, fromLast=TRUE)
+  new[dup] <- paste0(unquote_newick(new[dup]), " [", taxid[dup], "]") |> paste0("'") |> gsub("^'(.*)$", "'\\1", .)
+  
+  new
+}
+
+# ---- usage: relabel a tree ----
+# tr <- read.tree("your_seed_tree.newick")
+# tr$tip.label <- labels_from_urs_or_keep(tr$tip.label, style = "sci_common")
+# write.tree(tr, "your_seed_tree_labeled.nwk")
+
+## reroot: URS0000D514AB
+# ============================
+# Standardise taxon names across RFAM/DNA/RNA trees
+# - Parses species names from RFAM labels like ".../…_Genus_species[9606].1"
+# - Builds accession -> species-name map
+# - Applies to all three trees (adds [ACC] only if needed for uniqueness)
+# - Writes: *.labeled.nwk and a CSV mapping
+# ============================
+
+# install.packages(c("ape","stringr"), repos="https://cloud.r-project.org")
+library(ape)
+library(stringr)
+
+# ---- INPUTS: change these ----
+rfam_path <- "/path/to/RF00740.rfam.newick"
+dna_path  <- "/path/to/RAxML_bipartitionsBranchLabels.RF00740_DNA"
+rna_path  <- "/path/to/RAxML_bipartitionsBranchLabels.RF00740_RNA"
+out_dir   <- dirname(rfam_path)
+
+# ---- helpers ----
+
+# extract all tip labels (tokens right before ":<number>")
+tip_labels_from_newick <- function(txt) {
+  m <- gregexpr("(?<=\\(|,)([^():;,]+?)(?=:\\-?\\d)", txt, perl=TRUE)
+  labs <- regmatches(txt, m)[[1]]
+  trimws(labs)
+}
+
+# drop odd leading numeric prefixes and underscores; keep token before first "_"
+canon <- function(x) {
+  x <- sub("^_*[0-9]+\\.?[0-9]*_", "", x)
+  x <- sub("^_*", "", x)
+  sub("^([^_]+).*", "\\1", x)
+}
+
+# accession token shared across trees (e.g., "URS000075E9DB" or "AY304470.1")
+extract_accession <- function(label) {
+  tok <- canon(label)
+  sub("/.*$", "", tok)       # strip coordinates
+}
+
+# try to parse "taxon chunk" from an RFAM-like label
+# primary pattern: after last '/' there is "..._<taxon>[", capture <taxon>
+rfam_taxon_guess <- function(label) {
+  m <- str_match(label, "/[^/_]*_([^[]+)\\[")
+  tax <- if (!is.na(m[1,2])) m[1,2] else {
+    # fallback: between last "_" and "[" (may capture just epithet; better than nothing)
+    lb <- regexpr("\\[", label)
+    if (lb > 0) {
+      us <- regexpr("_[^_]*\\[", label)
+      if (us > 0) substr(label, us + 1, lb - 1) else label
+    } else label
+  }
+  tax <- gsub("_+", " ", tax)
+  tax <- sub("\\.+$", "", tax)
+  trimws(tax)
+}
+
+# quote labels for Newick (escape inner apostrophes)
+quote_newick <- function(x) paste0("'", gsub("'", "''", x, fixed = TRUE), "'")
+
+# Relabel a Newick text using mapping accession -> species
+relabel_newick <- function(newick_text, mapping, disambig = TRUE, disambig_tag = c("ACC","taxid")) {
+  disambig_tag <- match.arg(disambig_tag)
+  tips <- tip_labels_from_newick(newick_text)
+  accs <- vapply(tips, extract_accession, "", USE.NAMES = FALSE)
+  
+  # Build base new labels
+  base <- vapply(accs, function(a) if (!is.na(mapping[a])) mapping[a] else NA_character_, "")
+  # Fallback: if not in mapping (e.g., tip absent from RFAM), try to parse directly
+  missing <- is.na(base) | base == ""
+  if (any(missing)) {
+    base[missing] <- vapply(tips[missing], rfam_taxon_guess, "")
+  }
+  
+  base <- ifelse(is.na(base) | base == "", tips, base)  # final fallback: original tip
+  
+  # Disambiguate duplicates
+  new_labels <- base
+  if (disambig) {
+    dups <- duplicated(base) | duplicated(base, fromLast = TRUE)
+    if (any(dups)) {
+      if (disambig_tag == "ACC") {
+        new_labels[dups] <- sprintf("%s [%s]", base[dups], accs[dups])
+      } else {
+        # try to pull [taxid] from the original tip
+        taxid <- str_match(tips, "\\[(\\d+)\\]")[,2]
+        new_labels[dups] <- ifelse(!is.na(taxid[dups]),
+                                   sprintf("%s [taxid:%s]", base[dups], taxid[dups]),
+                                   sprintf("%s [%s]", base[dups], accs[dups]))
+      }
+    }
+  }
+  
+  # Quote for Newick and splice back into the text
+  quoted <- vapply(new_labels, quote_newick, "")
+  pieces <- list(); last <- 0L
+  it <- gregexpr("(?<=\\(|,)([^():;,]+?)(?=:\\-?\\d)", newick_text, perl=TRUE)[[1]]
+  for (i in seq_along(it)) {
+    s <- attr(it, "capture.start")[i,1]; e <- s + attr(it, "capture.length")[i,1] - 1
+    pieces[[length(pieces)+1]] <- substr(newick_text, last + 1, s - 1)
+    pieces[[length(pieces)+1]] <- quoted[i]
+    last <- e
+  }
+  pieces[[length(pieces)+1]] <- substr(newick_text, last + 1, nchar(newick_text))
+  paste(pieces, collapse = "")
+}
+
+# ---- read files ----
+rfam_txt <- paste(readLines(rfam_path, warn=FALSE), collapse="\n")
+dna_txt  <- paste(readLines(dna_path,  warn=FALSE), collapse="\n")
+rna_txt  <- paste(readLines(rna_path,  warn=FALSE), collapse="\n")
+
+# ---- build accession -> species mapping using RFAM labels ----
+rfam_tips <- tip_labels_from_newick(rfam_txt)
+accs <- vapply(rfam_tips, extract_accession, "", USE.NAMES = FALSE)
+species <- vapply(rfam_tips, rfam_taxon_guess, "", USE.NAMES = FALSE)
+
+acc2name <- setNames(species, accs)
+
+# ---- apply to all three trees ----
+rfam_labeled <- relabel_newick(rfam_txt, acc2name, disambig = TRUE, disambig_tag = "ACC")
+dna_labeled  <- relabel_newick(dna_txt,  acc2name, disambig = TRUE, disambig_tag = "ACC")
+rna_labeled  <- relabel_newick(rna_txt,  acc2name, disambig = TRUE, disambig_tag = "ACC")
+
+# ---- write outputs ----
+rfam_out <- file.path(out_dir, sub("\\.newick$|\\.nwk$|\\.tre$", ".labeled.nwk", basename(rfam_path), ignore.case = TRUE))
+dna_out  <- file.path(out_dir, paste0(basename(dna_path), ".labeled.nwk"))
+rna_out  <- file.path(out_dir, paste0(basename(rna_path), ".labeled.nwk"))
+writeLines(rfam_labeled, rfam_out)
+writeLines(dna_labeled,  dna_out)
+writeLines(rna_labeled,  rna_out)
+
+# mapping CSV (for audit)
+map_csv <- file.path(out_dir, "accession_to_species_map.csv")
+write.csv(data.frame(accession = names(acc2name), species = unname(acc2name)),
+          map_csv, row.names = FALSE)
+
+message("Done.\n  RFAM: ", rfam_out,
+        "\n  DNA : ", dna_out,
+        "\n  RNA : ", rna_out,
+        "\n  Map : ", map_csv)

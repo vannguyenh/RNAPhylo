@@ -369,3 +369,18 @@ write.tree(t_rfam, file = "/Users/u7875558/RNAPhylo/seedAlignment_AllModels/comp
 write.tree(t_rna,  file = "/Users/u7875558/RNAPhylo/seedAlignment_AllModels/comparison/RF03165/RF03165_rna_clean.newick")
 write.tree(t_dna, file = "/Users/u7875558/RNAPhylo/seedAlignment_AllModels/comparison/RF03165/RF03165_dna_clean.newick")
 
+############ RF00740
+# --- paste your trees as strings (or read from files) ---
+rfam_raw <- read.tree('/Users/u7875558/RNAPhylo/seedAlignment_AllModels/comparison/RF00740/RF00740.rfam.newick')
+rna_raw  <- read.tree('/Users/u7875558/RNAPhylo/seedAlignment_AllModels/comparison/RF00740/RAxML_bipartitions.RF00740_RNA')
+dna_raw <- read.tree('/Users/u7875558/RNAPhylo/seedAlignment_AllModels/comparison/RF00740/RAxML_bipartitions.RF00740_DNA')
+
+# copy trees and clean tip labels
+t_rfam <- rfam_raw; t_rfam$tip.label <- canon(t_rfam$tip.label)
+t_rna  <- rna_raw;  t_rna$tip.label  <- canon(t_rna$tip.label)
+t_dna  <- dna_raw;  t_dna$tip.label  <- canon(t_dna$tip.label)
+
+# (optional) write out clean files you can open in Dendroscope
+write.tree(t_rfam, file = "/Users/u7875558/RNAPhylo/seedAlignment_AllModels/comparison/RF00164/RF00164_rfam_clean.newick")          # simple Newick
+write.tree(t_rna,  file = "/Users/u7875558/RNAPhylo/seedAlignment_AllModels/comparison/RF00164/RF00164_rna_clean.newick")
+write.tree(t_dna, file = "/Users/u7875558/RNAPhylo/seedAlignment_AllModels/comparison/RF00164/RF00164_dna_clean.newick")
