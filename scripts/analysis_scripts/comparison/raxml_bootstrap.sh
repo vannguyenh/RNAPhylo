@@ -6,6 +6,7 @@ RAXML='/Users/u7875558/tools/standard-RAxML-master/raxmlHPC'
 RNA="$1"         # e.g. RF01690
 SEED_DNA="$2"    # e.g. 6
 SEED_RNA="$3"    # e.g. 4
+RNA_MODEL="$4"	 # e.g. S6A
 
 format_seedDNA=$(printf "%02d" "$SEED_DNA")
 format_seedRNA=$(printf "%02d" "$SEED_RNA")
@@ -31,19 +32,19 @@ mkdir -p "$outdir"
     -w "$outdir" \
     -n ${RNA}_DNA
 
-# ---------------- RNA (S6A) BOOTSTRAP ----------------
-# Generate 100 bootstrap replicates under S6A + structure
-"$RAXML" -m GTRGAMMA -A S6A \
+# ---------------- RNA (RNA_MODEL) BOOTSTRAP ----------------
+# Generate 100 bootstrap replicates under RNA_MODEL + structure
+"$RAXML" -m GTRGAMMA -A "${RNA_MODEL}" \
     -s "${input_path}/fasta_files/${RNA}.nodup.fa" \
     -S "${input_path}/ss_files/${RNA}.dots.ss" \
     -p "${SEED_RNA}" -b "${SEED_RNA}" -# 100 \
     -w "$outdir" \
     -n "${RNA}.rna.${format_seedRNA}.bstr"
 
-"$RAXML" -f b -m GTRGAMMA -A S6A \
+"$RAXML" -f b -m GTRGAMMA -A "${RNA_MODEL}" \
     -s "${input_path}/fasta_files/${RNA}.nodup.fa" \
     -S "${input_path}/ss_files/${RNA}.dots.ss" \
-    -t "${inferred_path}/S6A/${RNA}/RAxML_bestTree.${RNA}.${format_seedRNA}" \
+    -t "${inferred_path}/${RNA_MODEL}/${RNA}/RAxML_bestTree.${RNA}.${format_seedRNA}" \
     -z "${outdir}/RAxML_bootstrap.${RNA}.rna.${format_seedRNA}.bstr" \
     -w "$outdir" \
     -n "${RNA}_RNA"
