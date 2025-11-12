@@ -3,10 +3,10 @@ set -euo pipefail
 
 RAXML='/Users/u7875558/tools/standard-RAxML-master/raxmlHPC'
 
-RNA="$1"         # e.g. RF01690
-SEED_DNA="$2"    # e.g. 6
-SEED_RNA="$3"    # e.g. 4
-RNA_MODEL="$4"	 # e.g. S6A
+RNA="$1"         # e.g. RF00740
+SEED_DNA="$2"    # e.g. 10 
+SEED_RNA="$3"    # e.g. 6
+RNA_MODEL="$4"	 # e.g. S16
 
 format_seedDNA=$(printf "%02d" "$SEED_DNA")
 format_seedRNA=$(printf "%02d" "$SEED_RNA")
@@ -25,6 +25,7 @@ mkdir -p "$outdir"
     -p "${SEED_DNA}" -b "${SEED_DNA}" -# 100 \
     -w "$outdir" \
     -n "${RNA}.dna.${format_seedDNA}.bstr"
+
 "$RAXML" -f b -m GTRGAMMA \
     -s "${input_path}/fasta_files/${RNA}.nodup.fa" \
     -t "${inferred_path}/DNA/${RNA}/RAxML_bestTree.${RNA}.${format_seedDNA}" \
@@ -39,12 +40,12 @@ mkdir -p "$outdir"
     -S "${input_path}/ss_files/${RNA}.dots.ss" \
     -p "${SEED_RNA}" -b "${SEED_RNA}" -# 100 \
     -w "$outdir" \
-    -n "${RNA}.rna.${format_seedRNA}.bstr"
+    -n "${RNA}.rna.${RNA_MODEL}.${format_seedRNA}.bstr"
 
 "$RAXML" -f b -m GTRGAMMA -A "${RNA_MODEL}" \
     -s "${input_path}/fasta_files/${RNA}.nodup.fa" \
     -S "${input_path}/ss_files/${RNA}.dots.ss" \
     -t "${inferred_path}/${RNA_MODEL}/${RNA}/RAxML_bestTree.${RNA}.${format_seedRNA}" \
-    -z "${outdir}/RAxML_bootstrap.${RNA}.rna.${format_seedRNA}.bstr" \
+    -z "${outdir}/RAxML_bootstrap.${RNA}.rna.${RNA_MODEL}.${format_seedRNA}.bstr" \
     -w "$outdir" \
-    -n "${RNA}_RNA"
+    -n "${RNA}_${RNA_MODEL}"
