@@ -1,12 +1,42 @@
+"""
+Batch U-test on normalized RF distances (single model, many RNA families).
+
+For each RNA directory under DIR_RF:
+  • Read DNA↔DNA       matrix: <RNA>.raxml.rfdist         (10×10)
+  • Read DNA↔RNA (Pi)  matrix: <RNA>.raxml.raxmlPi.rfdist (10×10)
+  • Normalize each cell to nRF = RF / [2*(n-3)]  (auto-skips if already ≤1)
+  • DNA↔DNA: use all 100 values (1st 10 DNA trees against 2nd 10 DNA trees) → 100 values
+    DNA↔RNA: use all 100 values
+  • Compute two-sided Mann–Whitney U-test
+  • Record per-RNA medians for both groups
+Outputs:
+  1) Utest_long.csv        : Model, RNA, n_DNA, n_RNA, U, pvalue, p_bonf, flags
+  2) Utest_wide.csv        : RNA × Model table of (raw) p-values
+  3) Median_nRF_long.csv   : long table of per-RNA medians (for plotting)
+Notes:
+  • n = #taxa is taken from a tree file per RNA. We try, in order:
+      <RNA>.raxml  →  <RNA>.raxmlPi  →  any DNA tree in DIR_DNA/<RNA>/RAxML_bestTree.*
+"""
+
 import os
 from os.path import join, isdir, basename
+import numpy as np
+import pandas as pd
+from scipy.stats import mannwhitneyu
+from sklearn.preprocessing import normalize as _ignore
 from Bio import Phylo
-import pandas as pd 
+from statsmodels.stats.multitest import multipletests
 
 import subprocess
 import re
 import logging
 from datetime import datetime
+
+# ── PATHS (EDIT THESE) ─────────────────────────────────────────────────────────
+DIR_WORKING = "/Users/u7875558/RNAPhylo/seedAlignment_AllModels"
+DIR_OUTPUTS = join(DIR_WORKING, "outputs")
+DIR_RF      = join(DIR_OUTPUTS, "Robinson_Foulds")   # contains <RNA> subfolders
+DIR_DNA     = join(DIR_OUTPUTS,"inferred_trees", "DNAtrees")
 
 LOG_FORMAT = '%(asctime)s - %(levelname)s - %(message)s'
 
