@@ -5,8 +5,8 @@
 Mann–Whitney U-test on normalised RF distances for ONE model.
 
 Compares, per RNA:
-  - DNA vs DNA     (file: <RNA>.raxml.rfdist;     use upper triangle)
-  - DNA vs RNA     (file: <RNA>.raxml.raxmlPi.rfdist; use all cells)
+  - DNA vs DNA     (file: DIR_RF/DNA_extra/<RNA>.rfdist in the DNA_extra folder)
+  - DNA vs RNA     (file: DIR_RF/<MODEL>/<RNA>.rfdist in the S* folder)
 
 Outputs:
   1) {out_dir}/{tag}_long.csv   with columns: Model, RNA, n_DNA, n_RNA, U, pvalue
@@ -17,22 +17,26 @@ import os
 from os.path import join, isdir
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import normalize
+from Bio import Phylo
+
 from scipy.stats import mannwhitneyu
+from statsmodels.stats.multitest import multipletests
 
-# ── PATHS (edit to your machine) ───────────────────────────────────────────────
-DIR_WORKING = "/Users/u7875558/RNAPhylo/fullAlignment_S6A"
+
+# -------- PATHS (edit if needed) ---------------------------------------------
+DIR_WORKING = "/Users/u7875558/RNAPhylo/seedAlignment_AllModels"
 DIR_OUTPUTS = join(DIR_WORKING, "outputs")
-DIR_RF      = join(DIR_OUTPUTS, "Robinson_Foulds_iqtree3")   # contains <RNA>/ files
-MODEL       = "S6A"  # label to write in outputs
+DIR_RF      = join(DIR_OUTPUTS, "251121_Robinson_Foulds")          # <MODEL>/<RNA>/<RNA>.rfdist
+DIR_DNA     = join(DIR_OUTPUTS, "inferred_trees", "DNA")    # DNA trees for counting taxa
+RF_SUFFIX   = ".rfdist"                       # used for both DNA_extra and S* models
 
-# Expected file suffixes
-DNA_RFDIST_SUFFIX       = ".raxml.rfdist"
-DNA_VS_RNA_IPSEU_SUFFIX = ".raxml.raxmlPi.rfdist"
+ALPHA = 0.05
 
 # ── I/O helpers ────────────────────────────────────────────────────────────────
 def read_rfdist_matrix(path: str) -> np.ndarray:
     """Read IQ-TREE .rfdist square matrix to 2D array; empty array if missing/empty."""
+    if not os.path.exists(path):
+        return np.array([])
     with open(path, "r") as f:
         lines = f.readlines()
     if len(lines) <= 1:
@@ -45,93 +49,142 @@ def read_rfdist_matrix(path: str) -> np.ndarray:
         rows.append(list(map(float, parts[1:])))  # skip row label
     return np.array(rows, dtype=float) if rows else np.array([])
 
-def norm_upper_triangle(mat: np.ndarray) -> np.ndarray:
-    """L2-normalize and return upper triangle (k=1) flattened."""
-    if mat.size == 0:
-        return np.array([])
-    if mat.ndim == 1:
-        mat = mat.reshape(1, -1)
-    n = mat.shape[0]
-    norm = normalize(mat, norm="l2")
-    iu = np.triu_indices(n, k=1)
-    return norm[iu].astype(float)
+def find_one_tree_for_taxa(dir_with_trees: str) -> str | None:
+    """
+    Return a path to any tree file for this RNA to count taxa from.
+    """
+    if isdir(dir_with_trees):
+        for fn in sorted(os.listdir(dir_with_trees)):
+            if fn.startswith("RAxML_bestTree"):
+                p = join(dir_with_trees, fn)
+                if os.path.exists(p):
+                    return p
+    return None
 
-def norm_full_flat(mat: np.ndarray) -> np.ndarray:
-    """L2-normalize and return all entries flattened."""
-    if mat.size == 0:
-        return np.array([])
-    if mat.ndim == 1:
-        mat = mat.reshape(1, -1)
-    norm = normalize(mat, norm="l2")
-    return norm.flatten().astype(float)
+def count_taxa(tree_path: str) -> int | None:
+    """Count terminals in the first tree from a Newick file."""
+    if not tree_path or not os.path.exists(tree_path): return None
+    try:
+        with open(tree_path, "r") as fh:
+            tree = next(Phylo.parse(fh, "newick"))
+        return len(tree.get_terminals())
+    except Exception:
+        return None
+
+def normalize_rf_matrix_by_n(mat: np.ndarray, n_taxa: int) -> np.ndarray:
+    """
+    Standard RF normalization to [0,1]:
+      nRF = RF / (2*(n-3))  for unrooted binary trees.
+    If max(mat) ≤ 1.0, assume already normalized; return as-is.
+    """
+    if mat.size == 0 or not n_taxa or n_taxa < 4: return np.array([])
+    denom = 2 * (n_taxa - 3)
+    return mat / denom
+
+def model_to_category(model):
+    return f"DNA vs RNA ({model})"
 
 # ── Core ───────────────────────────────────────────────────────────────────────
-def compute_utest_for_model(model: str, rf_root: str) -> pd.DataFrame:
+# ── Core per-RNA computation ───────────────────────────────────────────────────
+def process_one_rna(rna_dir: str, rna: str, model:str) -> dict | None:
     """
-    Iterate RNA folders under rf_root and compute U-test p-values:
-      DNA vs DNA  vs  DNA vs RNA (ignore pseudoknots)
+    Read, normalize, summarize, and U-test one RNA.
+    Returns a dict of results, or None if cannot process.
     """
-    if not isdir(rf_root):
-        return pd.DataFrame(columns=["Model","RNA","n_DNA","n_RNA","U","pvalue"])
+    # RF matrices: DNA_extra and S* model
+    dna_fp   = join(DIR_RF, "DNA_extra", rna, f"{rna}{RF_SUFFIX}") # DNA vs DNA_extra
+    rna_fp   = join(DIR_RF, model,       rna, f"{rna}{RF_SUFFIX}") # DNA vs RNA in RNA model
+    if not (os.path.exists(dna_fp) and os.path.exists(rna_fp)):
+        return None
 
-    records = []
-    for rna in sorted(os.listdir(rf_root)):
-        rna_dir = join(rf_root, rna)
-        if not isdir(rna_dir):
+    # taxon counts from any DNA tree and the model’s DNA trees
+    dna_tree = find_one_tree_for_taxa(join(DIR_DNA, rna))
+    mod_tree = find_one_tree_for_taxa(join(DIR_OUTPUTS, "inferred_trees", model, rna))
+    n_dna = count_taxa(dna_tree)
+    n_mod = count_taxa(mod_tree)
+    if not n_dna or not n_mod or n_dna < 4 or n_mod < 4: return None
+    if n_dna != n_mod:
+        # require same n for comparable nRF
+        return None
+    n = n_dna
+
+    dna_raw = read_rfdist_matrix(dna_fp)
+    rna_raw = read_rfdist_matrix(rna_fp)
+    if dna_raw.size == 0 or rna_raw.size == 0: return None
+
+    dna_nrf = normalize_rf_matrix_by_n(dna_raw, n)
+    rna_nrf = normalize_rf_matrix_by_n(rna_raw, n)
+    if dna_nrf.size == 0 or rna_nrf.size == 0: return None
+
+    dna_vals = dna_nrf.flatten().astype(float)   # 100
+    rna_vals = rna_nrf.flatten().astype(float)   # 100
+    if dna_vals.size == 0 or rna_vals.size == 0: return None
+
+    U, p = mannwhitneyu(dna_vals, rna_vals, alternative="two-sided")
+
+    return {
+        "Model": model,
+        "RNA": rna,
+        "n_taxa": int(n),
+        "n_DNA":  int(dna_vals.size),
+        "n_RNA":  int(rna_vals.size),
+        "DNA_median_nRF": float(np.median(dna_vals)),
+        "RNA_median_nRF": float(np.median(rna_vals)),
+        "U": float(U),
+        "pvalue": float(p),
+    }
+
+
+def main():
+    if not isdir(DIR_RF):
+        raise SystemExit(f"DIR_RF not found: {DIR_RF}")
+
+    models = [m for m in sorted(os.listdir(DIR_RF)) if isdir(join(DIR_RF, m)) and m.startswith("S")]
+    results, med_rows = [], []
+
+    for model in models:
+        model_dir = join(DIR_RF, model)
+        rnas = [d for d in sorted(os.listdir(model_dir)) if isdir(join(model_dir, d))]
+        model_rows = []
+        for rna in rnas:
+            rec = process_one_rna(model, rna)
+            if rec: model_rows.append(rec)
+        if not model_rows:
             continue
 
-        dna_fp   = join(rna_dir, f"{rna}{DNA_RFDIST_SUFFIX}")
-        ipseu_fp = join(rna_dir, f"{rna}{DNA_VS_RNA_IPSEU_SUFFIX}")
-        if not (os.path.exists(dna_fp) and os.path.exists(ipseu_fp)):
-            continue
+        # per-model FDR (BH)
+        pvals = np.array([r["pvalue"] for r in model_rows], dtype=float)
+        rej, qvals, _, _ = multipletests(pvals, alpha=ALPHA, method="fdr_bh")
+        for r, q, ok in zip(model_rows, qvals, rej):
+            r["p_fdr_model"] = float(q)
+            r["sig_fdr_model"] = bool(ok)
 
-        dna_vals   = norm_upper_triangle(read_rfdist_matrix(dna_fp))
-        ipseu_vals = norm_full_flat(read_rfdist_matrix(ipseu_fp))
+        results.extend(model_rows)
 
-        if dna_vals.size == 0 or ipseu_vals.size == 0:
-            continue
+        cat = model_to_category(model)
+        for r in model_rows:
+            med_rows.append({"Model": model, "RNA": r["RNA"], "Category": "DNA vs DNA", "Median nRF": r["DNA_median_nRF"]})
+            med_rows.append({"Model": model, "RNA": r["RNA"], "Category": cat,           "Median nRF": r["RNA_median_nRF"]})
 
-        res = mannwhitneyu(dna_vals, ipseu_vals, alternative="two-sided")
-        U = getattr(res, "statistic", res[0])
-        p = getattr(res, "pvalue",    res[1])
+    if not results:
+        print("No usable data found across models.")
+        return None, None, None
 
-        records.append({
-            "Model":  model,
-            "RNA":    rna,
-            "n_DNA":  int(dna_vals.size),
-            "n_RNA":  int(ipseu_vals.size),
-            "U":      float(U),
-            "pvalue": float(p),
-        })
+    df_long = pd.DataFrame(results).sort_values(["Model","RNA"]).reset_index(drop=True)
 
-    return pd.DataFrame.from_records(records)
-
-def run_single_model(model: str = MODEL,
-                     rf_root: str = DIR_RF,
-                     out_dir: str = DIR_RF,
-                     tag: str = "Utest_pvalues_ignore_pseudoknots"):
-    """Compute and write long & wide tables for a single model."""
-    df_long = compute_utest_for_model(model, rf_root)
-    if df_long.empty:
-        print("No usable RNAs found — check paths and files.")
-        return df_long, pd.DataFrame()
+    # global FDR (across all model×RNA tests), optional:
+    rej_g, q_g, _, _ = multipletests(df_long["pvalue"].values, alpha=ALPHA, method="fdr_bh")
+    df_long["p_fdr_global"] = q_g
+    df_long["sig_fdr_global"] = rej_g
 
     df_wide = (
-        df_long.pivot(index="RNA", columns="Model", values="pvalue")
+        df_long.pivot_table(index="RNA", columns="Model", values="pvalue", aggfunc="first")
                .sort_index()
     )
+    df_medians = pd.DataFrame(med_rows)
 
-    os.makedirs(out_dir, exist_ok=True)
-    long_fp = join(out_dir, f"{tag}_long.csv")
-    wide_fp = join(out_dir, f"{tag}_wide.csv")
-    df_long.to_csv(long_fp, index=False)
-    df_wide.to_csv(wide_fp)
-
-    print(f"Wrote long table: {long_fp}  (rows={len(df_long)})")
-    print(f"Wrote wide table: {wide_fp}  (RNAs={df_wide.shape[0]})")
-    return df_long, df_wide
+    return df_long, df_wide, df_medians
 
 # ── CLI ────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    print(f"Running U-test for model: {MODEL}")
-    run_single_model()
+    df_long, df_wide, df_medians = main()
