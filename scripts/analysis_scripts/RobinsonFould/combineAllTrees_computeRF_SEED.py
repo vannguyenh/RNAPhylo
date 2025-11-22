@@ -2,11 +2,10 @@
 Batch U-test on normalized RF distances (single model, many RNA families).
 
 For each RNA directory under DIR_RF:
-  • Read DNA↔DNA       matrix: <RNA>.raxml.rfdist         (10×10)
-  • Read DNA↔RNA (Pi)  matrix: <RNA>.raxml.raxmlPi.rfdist (10×10)
-  • Normalize each cell to nRF = RF / [2*(n-3)]  (auto-skips if already ≤1)
-  • DNA↔DNA: use all 100 values (1st 10 DNA trees against 2nd 10 DNA trees) → 100 values
-    DNA↔RNA: use all 100 values
+  • Read DNA↔DNA       matrix: DNA_extra/<RNA>.rfdist           (10×10)
+  • Read DNA↔RNA (Pi)  matrix: S**/<RNA>.rfdist                 (10×10)
+  • Normalize each cell to nRF = RF / [2*(n-3)] 
+
   • Compute two-sided Mann–Whitney U-test
   • Record per-RNA medians for both groups
 Outputs:
@@ -14,18 +13,14 @@ Outputs:
   2) Utest_wide.csv        : RNA × Model table of (raw) p-values
   3) Median_nRF_long.csv   : long table of per-RNA medians (for plotting)
 Notes:
-  • n = #taxa is taken from a tree file per RNA. We try, in order:
-      <RNA>.raxml  →  <RNA>.raxmlPi  →  any DNA tree in DIR_DNA/<RNA>/RAxML_bestTree.*
+  • n = #taxa is taken from a tree file per RNA that model. We use <>/<RNA>/RAxML_bestTree.*
 """
 
 import os
-from os.path import join, isdir, basename
+from os.path import join, isdir
 import numpy as np
 import pandas as pd
 from Bio import Phylo
-from scipy.stats import mannwhitneyu
-from sklearn.preprocessing import normalize as _ignore
-from statsmodels.stats.multitest import multipletests
 
 import subprocess
 import re
@@ -47,15 +42,6 @@ os.makedirs(DIR_RF_LOGS, exist_ok=True)
 DIR_DNA=join(DIR_TREES, 'DNA')
 DIR_DNAextra=join(DIR_TREES, 'DNA_extra')
 RF_ID_RE = re.compile(r'^RF\d{5}$')
-
-
-
-# what we will concatenate
-#METHOD_SUFFIX = {
-#    "raxml":         "raxml",      # DNA set (baseline)
-#    "raxmlP_iPseu":  "raxmlPi",    # RNA model set
-#    "raxml_extra":   "raxml.extra" # extra DNA set (when MODEL == DNA_extra)
-#}
 
 def check_branch_length(diroutput, rna):
     """
@@ -80,38 +66,6 @@ def check_branch_length(diroutput, rna):
     if len(delete_files) > 0:
         return rna
 
-def extractAnalysedRNAs(log_file):
-    # This function produces two sets of accepted RNAs -- RNAs containing pseudoknots and RNAs containing no pseudoknots    
-    # extract accepted RNAs which do not have any branch length > 1
-    rnas = os.listdir(DIR_DNA)
-    
-    brlength_larger1=list()
-    less4_pat = re.compile(r'Number of sequences of (RF\d{5}) is less than 4\.')
-    unpaired_pat = re.compile(r'The secondary structure of (RF\d{5}) has only unpaired bases\.')  # note: "unpaired"
-    less4, unpaired = set(), set()
-    
-    accepted_rnas=list()
-    
-    with open(log_file, 'r') as lf: #log file used for this full_S6A.log
-        for line in lf:
-            m1 = less4_pat.search(line)
-            if m1: less4.add(m1.group(1))
-            m2 = unpaired_pat.search(line)
-            if m2: unpaired.add(m2.group(1))
-    
-    for rna in rnas:
-        # consider only the outputs from using DNA
-        if check_branch_length(DIR_DNA, rna) == rna:
-            brlength_larger1.append(rna)
-        elif (rna not in less4 and rna not in unpaired):
-            accepted_rnas.append(rna)
-
-    unaccepted_rnas = less4 | unpaired | set(brlength_larger1)
-
-    logging.info(f'{len(accepted_rnas)} can be used for the downstream analysis.')
-    logging.info(f'{len(unaccepted_rnas)} cannot be used for the downstream analysis.')
-    return accepted_rnas, unaccepted_rnas
-
 def produceCombinedTrees(model, dir_output, rna):
     # 1) DNA set (baseline)
     dna_input = join(DIR_DNA, rna)
@@ -131,6 +85,7 @@ def produceCombinedTrees(model, dir_output, rna):
             with open(join(DIR_DNA, rna, fn)) as fh:
                 out.write(fh.read())
 
+    # 2) DNA_extra or RNA set
     if model.endswith('extra'):
         other_root = join(DIR_DNAextra, rna)
         other_suffix = 'dna.extra'
@@ -170,7 +125,7 @@ def computeRFdistance_iqtreecmd(dcombine_path, rna):
     run_command(command)
 
 def main():
-    MODEL = 'S7F'
+    MODEL = 'DNA_extra'
     dir_combined = join(DIR_RF, MODEL)
     os.makedirs(dir_combined, exist_ok=True)
 
