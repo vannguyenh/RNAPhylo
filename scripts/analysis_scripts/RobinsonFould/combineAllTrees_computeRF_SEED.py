@@ -34,7 +34,7 @@ LOG_FORMAT = '%(asctime)s - %(levelname)s - %(message)s'
 DIR_WORKING = "/Users/u7875558/RNAPhylo/seedAlignment_AllModels"
 DIR_OUTPUTS = join(DIR_WORKING, "outputs")
 DIR_TREES = join(DIR_OUTPUTS, 'inferred_trees')
-DIR_RF      = join(DIR_OUTPUTS, "251121_Robinson_Foulds")   # contains <RNA> subfolders
+DIR_RF      = join(DIR_OUTPUTS, "251125_Robinson_Foulds_noeliminationofbrchlength1")   # contains <RNA> subfolders
 os.makedirs(DIR_RF, exist_ok=True)
 DIR_RF_LOGS = join(DIR_WORKING, "logs", "RF_distance")
 os.makedirs(DIR_RF_LOGS, exist_ok=True)
@@ -49,6 +49,7 @@ def check_branch_length(diroutput, rna):
     If yes, there would be an issue with the dataset of this RNA family -- eliminate for the downstream analysis.
     diroutput: the folder containing DNA trees. == DIR_DNA
     """
+    issue=False
     expected_files = [f"{i:02d}" for i in range(1, 11)]
     dirRNA = os.path.join(diroutput, rna)
     delete_files = list()
@@ -64,7 +65,8 @@ def check_branch_length(diroutput, rna):
                         logging.info(f"{file_name} has branch length > 1.")
 
     if len(delete_files) > 0:
-        return rna
+        issue=True
+    return issue
 
 def produceCombinedTrees(model, dir_output, rna):
     # 1) DNA set (baseline)
@@ -125,7 +127,7 @@ def computeRFdistance_iqtreecmd(dcombine_path, rna):
     run_command(command)
 
 def main():
-    MODEL = 'DNA_extra'
+    MODEL = 'S7F'
     dir_combined = join(DIR_RF, MODEL)
     os.makedirs(dir_combined, exist_ok=True)
 
@@ -134,11 +136,15 @@ def main():
     logging.info(f"Running the code with the model {MODEL}.")
 
     for rna in os.listdir(DIR_DNA):
-        if os.path.exists(join(DIR_TREES, MODEL, rna)):
+        dir_inferred_rna = join(DIR_TREES, MODEL, rna)
+        if os.path.exists(dir_inferred_rna):
             dna_num_files = len(os.listdir(join(DIR_DNA, rna)))
-            rna_num_files = len(os.listdir(join(DIR_TREES, MODEL, rna)))
+            rna_num_files = len(os.listdir(dir_inferred_rna))
+
             if (dna_num_files != 50) & (rna_num_files != 50):
                 logging.warning(f"{rna} does not have enough inferred trees in either DNA or {MODEL}")
+            #elif check_branch_length(DIR_DNA, rna):
+            #    logging.warning(f"{rna} has DNA trees with branch length >1")
             else:
                 logging.info(f"Working with {rna}.")
                 path = join(dir_combined, rna)
