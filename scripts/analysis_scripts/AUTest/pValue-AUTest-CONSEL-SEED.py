@@ -21,68 +21,31 @@ DIR_INPUTS = join(DIR_WORKING, 'inputs')
 DIR_FASTA = join(DIR_INPUTS, 'fasta_files')
 DIR_SS = join(DIR_INPUTS, 'ss_files')
 
-LOG_FILE=join(DIR_WORKING, 'logs', 'SEED_AllModels.log')
+def check_branch_length(diroutput, rna):
+    """
+    Check out if the tree inferred under DNA model has any branch length larger than 1.
+    If yes, there would be an issue with the dataset of this RNA family -- eliminate for the downstream analysis.
+    diroutput: the folder containing DNA trees. == DIR_DNA
+    """
+    issue=False
+    expected_files = [f"{i:02d}" for i in range(1, 11)]
+    dirRNA = os.path.join(diroutput, rna)
+    delete_files = list()
 
-SUBFOLDERS=['raxml', 'raxmlP_wPseu', 'raxmlP_iPseu']
+    for file_name in os.listdir(dirRNA):
+        for seed in expected_files:
+            if file_name.startswith('RAxML_bestTree') and file_name.endswith(seed):
+                tree_path = os.path.join(dirRNA, file_name)
+                tree = Phylo.read(tree_path, 'newick')
+                for clade in tree.find_clades():
+                    if clade.branch_length and clade.branch_length > 1:
+                        delete_files.append(file_name)
+                        logging.info(f"{file_name} has branch length > 1.")
 
-def check_branch_length(dir_output, rna):
-    # return RNAs which either do not have enough 10 trees or have any branch lengths > 1
-    expected_files=[f"{i:02d}" for i in range(1,11)]
-    dirRNA = join(dir_output, rna)
-    delete_files=list()
-
-    if dirRNA.startswith('RF'):
-        for file_name in os.listdir(dirRNA):
-            for seed in expected_files:
-                if file_name.startswith('RAxML_bestTree') and file_name.endswith(seed):
-                    tree_path=join(dirRNA, file_name)
-                    tree=Phylo.read(tree_path, 'newick')
-                    for clade in tree.find_clades():
-                        if clade.branch_length and clade.branch_length > 1:
-                            delete_files.append(file_name)
-                            logging.info(f"{file_name} has branch length > 1.")
-    else:
-        logging.warning(f"{dirRNA} is not an RNA folder.")
-    
     if len(delete_files) > 0:
-        return rna
+        issue=True
+    return issue
     
-def extractAnalysedRNAs(log_file):
-    # This function produces two sets of accepted RNAs -- RNAs containing pseudoknots and RNAs containing no pseudoknots    
-    # extract accepted RNAs which do not have any branch length > 1
-    rnas = os.listdir(DIR_DNA)
-
-    brlength_larger1 =list()
-    accepted_rnas=list()
-
-    less4_pat = re.compile(r'Number of sequences of (RF\d{5}) is less than 4\.')
-    unpaired_pat = re.compile(r'The secondary structure of (RF\d{5}) has only unpaired bases\.')  # note: "unpaired"
-    less4, unpaired = set(), set()
-
-    with open(log_file, 'r') as lf: #log file used for this full_S6A.log
-        for line in lf:
-            m1 = less4_pat.search(line)
-            if m1: less4.add(m1.group(1))
-            m2 = unpaired_pat.search(line)
-            if m2: unpaired.add(m2.group(1))
-    
-    #both = less4 & unpaired
-    #less_only = sorted(less4 - unpaired)
-    #unpaired_only = sorted(unpaired - less4)
-
-    for rna in rnas:
-        # consider only the outputs from using DNA
-        if check_branch_length(DIR_DNA, rna) == rna:
-            brlength_larger1.append(rna)
-        elif (rna not in less4 and rna not in unpaired):
-            accepted_rnas.append(rna)
-    
-    unaccepted_rnas = less4 | unpaired | set(brlength_larger1)
-    
-    logging.info(f'{len(accepted_rnas)} can be used for the downstream analysis.')
-    logging.info(f'{len(unaccepted_rnas)} cannot be used for the downstream analysis.')
-    return accepted_rnas, unaccepted_rnas
-
 def check_inferred_tree(dir_rna):
     if len(os.listdir(dir_rna)) != 50:
         logging.warning(f"{dir_rna} does not have 10 trees.")
@@ -103,16 +66,6 @@ def extract_highestloglh(dir_path):
                     best_value = final_result.split()[-1]
                     lh[seed] = float(best_value)
     return sorted(lh.items(), key=lambda x: x[1], reverse=True)[0]
-
-def extract_highestLH_2Trees_pseudo(dir_output, rna):
-    raxTree_path = join(DIR_DNA, rna)
-    raxPTree_path = join(dir_output, SUBFOLDERS[1], rna)
-    if check_inferred_tree(raxTree_path) and check_inferred_tree(raxPTree_path):
-        bestTreesLH = {'DNA': extract_highestloglh(raxTree_path),
-                       'RNA considering pseudoknots': extract_highestloglh(raxPTree_path)}
-        return bestTreesLH
-    else:
-        return None
     
 def extract_highestLH_2Trees_ipseudo_dnaextra(dir_output, rna):
     raxTree_path = join(DIR_DNA, rna)
@@ -163,15 +116,14 @@ def main():
     MODEL = input('Model: ')
     DIR_AU = join(DIR_OUTPUTS, 'AU_Test_RAxMLNG', MODEL)
     os.makedirs(DIR_AU, exist_ok=True)
+
     DIR_COMBINE = join(DIR_AU, 'combine_2trees_highestLH')
     os.makedirs(DIR_COMBINE, exist_ok=True)
 
     log_filename = join(DIR_AU_LOGS, f"CONSEL_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.{MODEL}.log")
     logging.basicConfig(filename=log_filename, level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
-
-    rnas = extractAnalysedRNAs(LOG_FILE)[0]
    
-    for rna in rnas:
+    for rna in os.listdir(DIR_DNA):
         bestTrees = extract_highestLH_2Trees_ipseudo_dnaextra(join(DIR_TREES, MODEL), rna)
         if bestTrees is not None:
             dnaTree = join(DIR_DNA, rna, f"RAxML_bestTree.{rna}.{bestTrees['DNA'][0]}")

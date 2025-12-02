@@ -183,6 +183,15 @@ def main():
     )
     df_medians = pd.DataFrame(med_rows)
 
+    # Write outputs
+    out1 = join(DIR_RF, "SEED_Utest_all_models_long.csv")
+    out2 = join(DIR_RF, "Utest_all_models_wide.csv")
+    out3 = join(DIR_RF, "Median_nRF_all_models.csv")
+
+    df_long.to_csv(out1, index=False)
+    df_wide.to_csv(out2, index=False)
+    df_medians.to_csv(out3, index=False)
+
     return df_long, df_wide, df_medians
 
 # ── CLI ────────────────────────────────────────────────────────────────────────
