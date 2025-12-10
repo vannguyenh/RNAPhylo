@@ -1,3 +1,21 @@
+"""
+Batch U-test on normalized RF distances (single model, many RNA families).
+
+For each RNA directory under DIR_RF:
+  • Read DNA↔DNA       matrix: DNA_extra/<RNA>.rfdist           (10×10)
+  • Read DNA↔RNA (Pi)  matrix: S**/<RNA>.rfdist                 (10×10)
+  • Normalize each cell to nRF = RF / [2*(n-3)] 
+
+  • Compute two-sided Mann–Whitney U-test
+  • Record per-RNA medians for both groups
+Outputs:
+  1) Utest_long.csv        : Model, RNA, n_DNA, n_RNA, U, pvalue, p_bonf, flags
+  2) Utest_wide.csv        : RNA × Model table of (raw) p-values
+  3) Median_nRF_long.csv   : long table of per-RNA medians (for plotting)
+Notes:
+  • n = #taxa is taken from a tree file per RNA that model. We use <>/<RNA>/RAxML_bestTree.*
+"""
+
 import os
 from os.path import join
 from Bio import Phylo
