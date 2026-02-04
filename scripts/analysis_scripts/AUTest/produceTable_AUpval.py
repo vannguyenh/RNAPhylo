@@ -13,11 +13,12 @@ import subprocess
 import numpy as np
 import pandas as pd
 from Bio import Phylo
+from statsmodels.stats.multitest import multipletests
 
 # ─── USER PARAMETERS ───────────────────────────────────────────────────────────
 
-#DIR_WORKING     = '/Users/u7875558/RNAPhylo/seedAlignment_AllModels'
-DIR_WORKING = '/Users/u7875558/RNAPhylo/fullAlignment_S6A'
+DIR_WORKING     = '/Users/u7875558/RNAPhylo/seedAlignment_AllModels'
+#DIR_WORKING = '/Users/u7875558/RNAPhylo/fullAlignment_S6A'
 DIR_OUTPUTS     = join(DIR_WORKING, 'outputs')
 DIR_DNA         = join(DIR_OUTPUTS, 'DNA')
 # CONSEL outputs: outputs/AU_Test_RAxMLNG/<model>/ignore_pseudo/<RNA>/<RNA>_ipseu_consel.pv
@@ -72,12 +73,25 @@ def main():
     # Build DataFrame and pivot to wide format
     df = pd.DataFrame(records)
     print(df.head())
+
+    df['q_value'] = np.nan # Initialize q_value column
+    df['sig_fdr'] = False
+
+    for model in df['Model'].unique():
+        model_mask = (df['Model'] == model)
+        pvals = df.loc[model_mask, 'p_RNA_raw']
+        # FDR-BH correction 
+        reject, qvals, _, _ = multipletests(pvals, alpha=0.05, method='fdr_bh')
+        df.loc[model_mask, 'q_value'] = qvals
+        df.loc[model_mask, 'sig_fdr'] = reject
+
     full_csv = join(DIR_AU, 'AU_pValues_bothpVals_FULL.csv')
     df.to_csv(full_csv, sep='\t')
 
     df_table = df.pivot(index='RNA_family', columns='Model', values='p_RNA_raw').sort_index()
     print(df_table.head())
-    out_csv = join(DIR_AU, 'AU_pvalues_RNApVal_FULL.csv' )
+    out_csv = join(DIR_AU, '260203_AU_pvalues_RNApVal_SEED.csv' )
+    
     df_table.to_csv(out_csv)
     print(f"Saved p-values from AU test of all models to: {full_csv}, {out_csv}")
 
