@@ -13,7 +13,7 @@ import pandas as pd
 import logging
 from datetime import datetime
 import subprocess
-from typing import Optional, Tuple, List, Dict
+from typing import Optional
 
 def control_fasta_file(fi_fasta):
     qualify = False
@@ -64,7 +64,7 @@ def main():
             fasta_file = join(DIR_FASTA, f"{rna}.nodup.fa")
 
         if control_fasta_file(fasta_file):
-            raxml_prefix = join(DIR_OUTPUT, 'raxml', rna)
+            raxml_prefix = join(DIR_OUTPUT, 'DNA_extra', rna)
             raxmlPiPseu_prefix = join(DIR_OUTPUT, 'raxmlP_iPseu', rna)
 
             # run the raxml command via bash files
@@ -77,14 +77,14 @@ def main():
                 )
                 run_command(raxml_command)
 
-            if not os.path.isdir(raxmlPiPseu_prefix) or len(os.listdir(raxmlPiPseu_prefix)) != 50:
-                logging.warning(f"{raxmlPiPseu_prefix} has not been run yet or not run enough for 10 trees.")
-                raxmlPiPseu_command = (
-                    f"qsub -V -N raxmlP_{rna} -o {log_filename} -e {log_filename} "
-                    f"-l ncpus=1 -l mem=48gb -l walltime=48:00:00 -l wd -- " # default of RAxML 1 core.
-                    f"bash /scratch/dx61/vh5686/tmp/RNAPhylo/scripts/bashFiles/raxmlP.sh {rna} {fasta_file} {ss_file} {raxmlPiPseu_prefix} {MODEL} {RAXML_EXECUTE}"  
-                )
-                run_command(raxmlPiPseu_command)
+            #if not os.path.isdir(raxmlPiPseu_prefix) or len(os.listdir(raxmlPiPseu_prefix)) != 50:
+            #    logging.warning(f"{raxmlPiPseu_prefix} has not been run yet or not run enough for 10 trees.")
+            #    raxmlPiPseu_command = (
+            #        f"qsub -V -N raxmlP_{rna} -o {log_filename} -e {log_filename} "
+            #        f"-l ncpus=1 -l mem=48gb -l walltime=48:00:00 -l wd -- " # default of RAxML 1 core.
+            #        f"bash /scratch/dx61/vh5686/tmp/RNAPhylo/scripts/bashFiles/raxmlP.sh {rna} {fasta_file} {ss_file} {raxmlPiPseu_prefix} {MODEL} {RAXML_EXECUTE}"  
+            #    )
+            #    run_command(raxmlPiPseu_command)
         else:
             logging.info(f"{rna} does not have more than 3 sequences for the analysis.")
 
