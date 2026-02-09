@@ -14,7 +14,7 @@ DIR_WORKING = '/Users/u7875558/RNAPhylo/seedAlignment_AllModels'
 DIR_OUTPUTS = join(DIR_WORKING, 'outputs')
 DIR_TREES = join(DIR_OUTPUTS, 'inferred_trees')
 DIR_DNA = join(DIR_TREES, 'DNA')
-DIR_AU_LOGS = join(DIR_WORKING, 'logs', 'AU_test_RAxML-NG')
+DIR_AU_LOGS = join(DIR_WORKING, 'logs', '260208_AU_test_RNAmodels')
 os.makedirs(DIR_AU_LOGS, exist_ok=True)
 
 DIR_INPUTS = join(DIR_WORKING, 'inputs')
@@ -68,17 +68,17 @@ def extract_highestloglh(dir_path):
     return sorted(lh.items(), key=lambda x: x[1], reverse=True)[0]
     
 def extract_highestLH_2Trees_ipseudo_dnaextra(dir_output, rna):
-    raxTree_path = join(DIR_DNA, rna)
-    raxPiTree_path = join(dir_output, rna)
-    if check_inferred_tree(raxTree_path) and check_inferred_tree(raxPiTree_path):
-        bestTreesLH = {'DNA': extract_highestloglh(raxTree_path),
-                       'RNA_otherDNA': extract_highestloglh(raxPiTree_path)}
+    dna_path = join(DIR_DNA, rna)
+    rna_path = join(dir_output, rna)
+    if check_inferred_tree(dna_path) and check_inferred_tree(rna_path):
+        bestTreesLH = {'DNA': extract_highestloglh(dna_path),
+                       'RNA_otherDNA': extract_highestloglh(rna_path)}
         return bestTreesLH
     else:
         return None
 
-def combineTreeFiles(dir_combined, rna, group, tree1, tree2):
-    combined_TreeFile = join(dir_combined, f"{rna}.{group}.highestLH.trees")
+def combineTreeFiles(dir_combined, rna, tree1, tree2):
+    combined_TreeFile = join(dir_combined, f"{rna}.highestLH.trees")
 
     with open(combined_TreeFile, 'w') as f_combined:
         for tree_file in [tree1, tree2]:
@@ -93,12 +93,11 @@ def run_bash(command):
         logging.error(f"Bash command failed: {command}")
     return process.returncode
 
-def runningCONSEL(rna, group, fasta_file, ss_file, persite_suffix, persite_path, prefix_consel, dir_combined):
-    combineTree = join(dir_combined, f'{rna}.{group}.highestLH.trees')
-    output_persite = join(persite_path, f'{persite_suffix}.raxml.siteLH')    
-    bash_file = ' /Users/u7875558/Documents/promotion/projects/projects_code/RNAPhylo/scripts/analysis_scripts/AUTest/consel.sh'
-    consel_command = f"bash {bash_file} {fasta_file} {combineTree} {persite_suffix} {ss_file} {persite_path} {output_persite} {prefix_consel}"
-
+def runningCONSEL(rna, fasta_file, ss_file, persite_suffix, dir_AUrna, prefix_consel, model):
+    combineTree = join(dir_AUrna, f'{rna}.highestLH.trees')
+    output_persite = join(dir_AUrna, f'RAxML_perSiteLLs.{persite_suffix}')    
+    bash_file = ' /Users/u7875558/Documents/promotion/projects/projects_code/RNAPhylo/scripts/analysis_scripts/AUTest/consel_RNA.sh'
+    consel_command = f"bash {bash_file} {fasta_file} {combineTree} {ss_file} {persite_suffix} {dir_AUrna} {output_persite} {prefix_consel} {model}"
     run_bash(consel_command)
 
 def run_command(command):
@@ -114,11 +113,11 @@ def has_sitelh(dirpath: str) -> bool:
     
 def main():
     MODEL = input('Model: ')
-    DIR_AU = join(DIR_OUTPUTS, 'AU_Test_RAxMLNG', MODEL)
+    DIR_AU = join(DIR_OUTPUTS, '260208_AU_Test_RAxML_RNAmodels', MODEL)
     os.makedirs(DIR_AU, exist_ok=True)
 
-    DIR_COMBINE = join(DIR_AU, 'combine_2trees_highestLH')
-    os.makedirs(DIR_COMBINE, exist_ok=True)
+    #DIR_COMBINE = join(DIR_AU, 'combine_2trees_highestLH')
+    #os.makedirs(DIR_COMBINE, exist_ok=True)
 
     log_filename = join(DIR_AU_LOGS, f"CONSEL_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.{MODEL}.log")
     logging.basicConfig(filename=log_filename, level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -129,20 +128,23 @@ def main():
             dnaTree = join(DIR_DNA, rna, f"RAxML_bestTree.{rna}.{bestTrees['DNA'][0]}")
             rnaTree = join(DIR_TREES, MODEL, rna, 
                            f"RAxML_bestTree.{rna}.{bestTrees['RNA_otherDNA'][0]}")
-            combineTreeFiles(DIR_COMBINE, rna, 'iPseu', dnaTree, rnaTree)
-
-            persite_path = join(DIR_AU, 'ignore_pseudo', rna)
+            
+            # create the path of each RNA in the folder of AU test
+            persite_path = join(DIR_AU, rna)
             os.makedirs(persite_path, exist_ok=True)
-            persite_suffix = f'{rna}.ipseu.sitelh'
-            prefix_consel = join(persite_path, f'{rna}_ipseu_consel')
+            
+            # create a file containing DNA and RNA tree with the best log-likelihood for each RNA family, which would be used as input for CONSEL
+            combineTreeFiles(persite_path, rna, dnaTree, rnaTree)
 
-            ss_file = join(DIR_SS, f'{rna}.dots.ss')
+            persite_suffix = f'{rna}.sitelh'
+            prefix_consel = join(persite_path, f'{rna}_consel')
+
+            ss_file = join(DIR_SS, f'{rna}.ss')
             fasta_file = join(DIR_FASTA, f'{rna}.nodup.fa')
                 
             try:
-                runningCONSEL(rna,'iPseu', fasta_file, ss_file, persite_suffix, 
-                              persite_path, prefix_consel, DIR_COMBINE)
-                logging.info(f"CONSEL is running with {rna} ignoring pseudoknots.")
+                runningCONSEL(rna, fasta_file, ss_file, persite_suffix, persite_path, prefix_consel, MODEL)
+                logging.info(f"CONSEL is running with {rna}.")
             except Exception as e:
                 logging.error(f"Error with {rna}: {e}")
 
@@ -162,11 +164,7 @@ def main():
                     fasta_file_red = None
 
                 if fasta_file_red is not None:
-                    runningCONSEL(
-                        rna,'iPseu',
-                        fasta_file_red, ss_file,
-                        persite_suffix, persite_path, prefix_consel, DIR_COMBINE
-                    )
+                    runningCONSEL(rna, fasta_file_red, ss_file, persite_suffix, persite_path, prefix_consel, MODEL)
                     if has_sitelh(persite_path):
                         logging.info(f"{rna}: reduced attempt produced *.sitelh.")
                     else:
