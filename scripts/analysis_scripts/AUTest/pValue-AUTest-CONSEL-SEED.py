@@ -107,7 +107,7 @@ def run_command(command):
 def has_sitelh(dirpath: str) -> bool:
     """Return True if any file in dirpath ends with *sitelh (case-insensitive)."""
     try:
-        return any(fn.lower().endswith('sitelh') for fn in os.listdir(dirpath))
+        return any(fn.startswith('RAxML_perSiteLLs') for fn in os.listdir(dirpath))
     except FileNotFoundError:
         return False
     
@@ -156,6 +156,7 @@ def main():
                 run_command(f"rm -rf {persite_path}")
                 os.makedirs(persite_path, exist_ok=True)
 
+                combineTreeFiles(persite_path, rna, dnaTree, rnaTree)
                 # Use reduced SS and reduced FASTA if present
                 if isfile(join(DIR_FASTA, f'{rna}.nodup.fa.reduced')):
                     fasta_file_red = join(DIR_FASTA, f'{rna}.nodup.fa.reduced')
@@ -163,8 +164,14 @@ def main():
                     logging.warning(f'No reduced FASTA found for {rna}; skipping reduced attempt.')
                     fasta_file_red = None
 
+                if isfile(join(DIR_SS, f'{rna}.ss.reduced')):
+                    ss_file_red = join(DIR_SS, f'{rna}.ss.reduced')
+                else:
+                    logging.warning(f'No reduced SS found for {rna}; skipping reduced attempt.')
+                    ss_file_red = None
+
                 if fasta_file_red is not None:
-                    runningCONSEL(rna, fasta_file_red, ss_file, persite_suffix, persite_path, prefix_consel, MODEL)
+                    runningCONSEL(rna, fasta_file_red, ss_file_red, persite_suffix, persite_path, prefix_consel, MODEL)
                     if has_sitelh(persite_path):
                         logging.info(f"{rna}: reduced attempt produced *.sitelh.")
                     else:
