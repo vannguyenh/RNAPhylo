@@ -34,14 +34,13 @@ LOG_FORMAT = '%(asctime)s - %(levelname)s - %(message)s'
 DIR_WORKING = "/Users/u7875558/RNAPhylo/seedAlignment_AllModels"
 DIR_OUTPUTS = join(DIR_WORKING, "outputs")
 DIR_TREES = join(DIR_OUTPUTS, 'inferred_trees')
-DIR_RF      = join(DIR_OUTPUTS, "251125_Robinson_Foulds_noeliminationofbrchlength1")   # contains <RNA> subfolders
+DIR_RF      = join(DIR_OUTPUTS, "260203_Robinson_Foulds")   # contains <RNA> subfolders
 os.makedirs(DIR_RF, exist_ok=True)
 DIR_RF_LOGS = join(DIR_WORKING, "logs", "RF_distance")
 os.makedirs(DIR_RF_LOGS, exist_ok=True)
 
 DIR_DNA=join(DIR_TREES, 'DNA')
 DIR_DNAextra=join(DIR_TREES, 'DNA_extra')
-RF_ID_RE = re.compile(r'^RF\d{5}$')
 
 def check_branch_length(diroutput, rna):
     """
@@ -113,23 +112,23 @@ def run_command(command):
         logging.error(f"Command failed: {command} with error: {e}")
 
 def computeRFdistance_iqtreecmd(dcombine_path, rna):
-    dir_combine_rna = os.path.join(dcombine_path, rna)
+    dir_combine_rna = join(dcombine_path, rna)
     for f in os.listdir(dir_combine_rna):
         if f.endswith("dna"):
-            DNATree = os.path.join(dir_combine_rna, f)
+            DNATree = join(dir_combine_rna, f)
         elif f.endswith("rna"):
-            otherTree = os.path.join(dir_combine_rna, f)
+            otherTree = join(dir_combine_rna, f)
         elif f.endswith("extra"):
-            otherTree = os.path.join(dir_combine_rna, f)
+            otherTree = join(dir_combine_rna, f)
 
     logging.info(f"Compute the RF distances of {rna}.")
     command=f"bash /Users/u7875558/Documents/promotion/projects/projects_code/RNAPhylo/scripts/analysis_scripts/RobinsonFould/computeRFdistance.sh {DNATree} {otherTree} {dir_combine_rna} {rna}"
     run_command(command)
 
 def main():
-    MODEL = 'S7F'
-    dir_combined = join(DIR_RF, MODEL)
-    os.makedirs(dir_combined, exist_ok=True)
+    MODEL = input('Model: ')
+    dir_RFmodel = join(DIR_RF, MODEL)
+    os.makedirs(dir_RFmodel, exist_ok=True)
 
     log_filename = join(DIR_RF_LOGS, f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.{MODEL}.log")
     logging.basicConfig(filename=log_filename, level=logging.DEBUG, format=LOG_FORMAT)
@@ -147,7 +146,7 @@ def main():
             #    logging.warning(f"{rna} has DNA trees with branch length >1")
             else:
                 logging.info(f"Working with {rna}.")
-                path = join(dir_combined, rna)
+                path = join(dir_RFmodel, rna)
                 rfdist_file = 0
                 if os.path.isdir(path):
                     for f in os.listdir(path):
@@ -156,8 +155,8 @@ def main():
 
                 if rfdist_file != 1: # 3 while using only ramxl and raxmlP_iPseu, 6 while using raxml, raxmlP_iPseu and raxmlP_wPseu
                     #run_command(f"rm -r {path}")
-                    produceCombinedTrees(MODEL, dir_combined, rna)
-                    computeRFdistance_iqtreecmd(dir_combined, rna)
+                    produceCombinedTrees(MODEL, dir_RFmodel, rna)
+                    computeRFdistance_iqtreecmd(dir_RFmodel, rna)
                 else:
                     continue
         else:
