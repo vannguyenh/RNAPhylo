@@ -14,3 +14,4 @@ done
 
 # Wait for all to finish
 wait
+EOF
