@@ -1,23 +1,20 @@
 #!/usr/bin/env python3
 """
-plot_rf_density_by_rna_type.py
-==============================
-Faceted KDE density plot of normalised RF distances, split by RNA structural
-type (rows) and RNA substitution model (columns).
+plot_rf_best_density_by_rna_type.py
+====================================
+Faceted KDE density plot of normalised RF distances between BEST trees,
+split by RNA structural type (rows) and RNA substitution model (columns).
 
 Each panel shows two curves:
-  Red  : nRF(T_rna, T_dna)   — RNA model trees vs DNA trees
-  Teal : nRF(T_dna, T_dna2)  — DNA baseline (seeds 1–10 vs 11–20)
+  Red  : nRF(T_rna_best, T_dna_best)   — best RNA model tree vs best DNA tree
+  Teal : nRF(T_dna_best, T_dna2_best)  — DNA baseline (best DNA vs best DNA_2)
 
-The separation between curves answers: "does this RNA type benefit from
-RNA-specific substitution models?"
-
-RNA types are ordered top-to-bottom by expected structural complexity
-(i.e. where RNA models should matter most → least).
+Reads from:
+  outputs/260220_RF_distances/DNA_vs_{MODEL}/{locus}/{locus}.best.rfdist
 
 Usage
 -----
-    python plot_rf_density_by_rna_type.py
+    python plot_rf_best_density_by_rna_type.py
 
 Dependencies
 ------------
@@ -27,7 +24,6 @@ Dependencies
 import os
 import glob
 import logging
-import math
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -41,18 +37,16 @@ from Bio import Phylo
 
 DIR_WORKING   = os.path.expanduser("~/RNAPhylo/seedAlignment_AllModels")
 DIR_OUTPUTS   = os.path.join(DIR_WORKING, "outputs")
-DIR_RF        = os.path.join(DIR_OUTPUTS, "260203_Robinson_Foulds")
+DIR_RF        = os.path.join(DIR_OUTPUTS, "260220_RF_distances")   # CHANGED
 DIR_DNA_TREES = os.path.join(DIR_OUTPUTS, "inferred_trees", "DNA")
 
 # Rfam metadata files (adjust paths if needed)
 RFAM_TBL         = os.path.join(DIR_WORKING, "inputs/Rfam.full.seed.tbl")
-RFAM_FAMILY_TXT  = os.path.join(DIR_WORKING, "inputs/family.txt")   # the file you uploaded
+RFAM_FAMILY_TXT  = os.path.join(DIR_WORKING, "inputs/family.txt")
 
-OUTPUT_FIG = os.path.join(DIR_OUTPUTS, "rf_density_by_rna_type.pdf")
+OUTPUT_FIG = os.path.join(DIR_OUTPUTS, "rf_best_density_by_rna_type.pdf")
 
 # --- RNA type groups ----------------------------------------------------------
-# Ordered by structural complexity (most structured → least).
-# CHANGE 1: added "Other" at the bottom (includes tRNA n=2, CRISPR, unknown)
 RNA_TYPE_ORDER = [
     "rRNA",
     "Ribozyme",
@@ -67,10 +61,9 @@ RNA_TYPE_ORDER = [
     "Other",
 ]
 
-# Mapping from Rfam 'type' field → display group name
 TYPE_MAP = {
     "Gene; rRNA;":                       "rRNA",
-    "Gene; tRNA;":                       "Other",         # CHANGE 1: n=2, merged into Other
+    "Gene; tRNA;":                       "Other",
     "Gene; ribozyme;":                   "Ribozyme",
     "Gene; snRNA; splicing;":            "snRNA",
     "Gene; snRNA;":                      "snRNA",
@@ -93,15 +86,14 @@ TYPE_MAP = {
     "Gene;":                             "Other",
 }
 
-# Colours
-COLOR_RNA = "#E05C5C"   # red  — nRF(T_rna, T_dna)
-COLOR_DNA = "#4BBFBF"   # teal — nRF(T_dna, T_dna2)
+COLOR_RNA = "#E05C5C"   # red  — nRF(T_rna_best, T_dna_best)
+COLOR_DNA = "#4BBFBF"   # teal — nRF(T_dna_best, T_dna2_best)
 
 BW_METHOD  = "scott"
 KDE_POINTS = 500
 
 # =============================================================================
-# TAXONOMY / TYPE MAP BUILDER
+# TAXONOMY / TYPE MAP BUILDER  (unchanged)
 # =============================================================================
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
@@ -109,10 +101,6 @@ log = logging.getLogger(__name__)
 
 
 def build_rna_type_map() -> dict[str, str]:
-    """
-    Returns {rfam_acc: rna_group} using family.txt (col 18 = type).
-    Falls back to Rfam_full_seed.tbl ID-name heuristics if family.txt missing.
-    """
     if os.path.isfile(RFAM_FAMILY_TXT):
         log.info(f"Reading RNA types from {RFAM_FAMILY_TXT} ...")
         df = pd.read_csv(
@@ -128,7 +116,6 @@ def build_rna_type_map() -> dict[str, str]:
         log.info(f"  Type distribution:\n{counts.to_string()}")
         return result
 
-    # Fallback: name heuristics from .tbl file
     import re
     log.warning("family.txt not found — using name heuristics.")
     tbl = pd.read_csv(RFAM_TBL, sep="\t", usecols=["AC", "ID"])
@@ -153,6 +140,7 @@ def build_rna_type_map() -> dict[str, str]:
 # =============================================================================
 
 def count_taxa(locus: str) -> int | None:
+    """Count taxa from the best DNA tree file. (unchanged)"""
     pattern = os.path.join(DIR_DNA_TREES, locus, "RAxML_bestTree.*")
     candidates = [p for p in glob.glob(pattern) if os.path.isfile(p)]
     if not candidates:
@@ -166,75 +154,94 @@ def count_taxa(locus: str) -> int | None:
         return None
 
 
-def read_rfdist(path: str) -> np.ndarray | None:
+def parse_best_rfdist(path: str) -> float | None:
+    """
+    Parse a .best.rfdist file — a 2×2 matrix where the single
+    off-diagonal value is the RF distance between the two best trees.
+
+    Format:
+        2
+        tree1    0    X
+        tree2    X    0
+    """
+    if not os.path.isfile(path):
+        return None
     try:
         with open(path) as fh:
             lines = fh.readlines()
-        rows = []
-        for line in lines[1:]:
+        for line in lines[1:]:          # skip header line
             parts = line.strip().split()
-            if len(parts) > 1:
-                rows.append(list(map(float, parts[1:])))
-        return np.array(rows, dtype=float) if rows else None
+            if len(parts) >= 2:
+                for val in parts[1:]:
+                    try:
+                        rf = float(val)
+                        if rf > 0:
+                            return rf
+                    except ValueError:
+                        continue
+        return 0.0                      # identical trees
     except Exception as e:
         log.warning(f"cannot read {path}: {e}")
         return None
 
 
-def normalise(mat: np.ndarray, n_taxa: int) -> np.ndarray | None:
+def normalise(rf: float, n_taxa: int) -> float | None:
     if n_taxa < 4:
         return None
     denom = 2 * (n_taxa - 3)
-    return mat / denom if denom > 0 else None
+    return rf / denom if denom > 0 else None
 
 
 def collect_by_type(model: str,
                     type_map: dict[str, str]) -> dict[str, list[float]]:
     """
-    Returns {rna_group: [nRF values]} for a given model directory,
-    with loci split by RNA type. Off-diagonal only (no self-comparisons).
+    Returns {rna_group: [nRF values]} for a given model.
+
+    Reads from: DIR_RF/DNA_vs_{model}/{locus}/{locus}.best.rfdist
+    One scalar nRF value per locus (best tree vs best tree).
     """
-    model_dir = os.path.join(DIR_RF, model)
+    # CHANGED: folder is DNA_vs_{model}
+    model_dir = os.path.join(DIR_RF, f"DNA_vs_{model}")
+    if not os.path.isdir(model_dir):
+        log.warning(f"Directory not found: {model_dir}")
+        return {g: [] for g in RNA_TYPE_ORDER}
+
     loci = sorted(d for d in os.listdir(model_dir)
                   if os.path.isdir(os.path.join(model_dir, d)))
 
-    result: dict[str, list[float]] = {g: [] for g in RNA_TYPE_ORDER + ["Other"]}
+    result: dict[str, list[float]] = {g: [] for g in RNA_TYPE_ORDER}
     skipped = 0
 
     for locus in loci:
-        rfdist_path = os.path.join(model_dir, locus, f"{locus}.rfdist")
-        if not os.path.isfile(rfdist_path):
+        # CHANGED: read .best.rfdist (single value) instead of 10×10 .rfdist
+        rfdist_path = os.path.join(model_dir, locus, f"{locus}.best.rfdist")
+        rf = parse_best_rfdist(rfdist_path)
+        if rf is None:
             skipped += 1
             continue
-        mat = read_rfdist(rfdist_path)
-        if mat is None:
-            skipped += 1
-            continue
+
         n_taxa = count_taxa(locus)
         if n_taxa is None:
             skipped += 1
             continue
-        normed = normalise(mat, n_taxa)
-        if normed is None:
+
+        nrf = normalise(rf, n_taxa)
+        if nrf is None:
             skipped += 1
             continue
-
-        # Off-diagonal values only
-        mask = ~np.eye(normed.shape[0], normed.shape[1], dtype=bool)
-        vals  = normed[mask].tolist()
 
         group = type_map.get(locus, "Other")
         if group not in result:
             group = "Other"
-        result[group].extend(vals)
+        result[group].append(nrf)       # CHANGED: single value, not extend()
 
-    log.info(f"  {model}: {len(loci)-skipped}/{len(loci)} loci, "
+    log.info(f"  DNA_vs_{model}: {len(loci)-skipped}/{len(loci)} loci, "
              f"{skipped} skipped")
     return result
 
 
 # =============================================================================
-# PLOT
+# PLOT  (unchanged)
 # =============================================================================
 
 def plot_kde(ax, vals, color, bw="scott"):
@@ -259,16 +266,18 @@ def main():
         "S7A", "S7B", "S7C", "S7D", "S7E", "S7F",
         "S6A", "S6B", "S6C", "S6D", "S6E",
     ]
+    # CHANGED: look for DNA_vs_{model} folders
     available = {
-        d for d in os.listdir(DIR_RF)
-        if os.path.isdir(os.path.join(DIR_RF, d)) and d != "DNA_extra"
+        d.replace("DNA_vs_", "") for d in os.listdir(DIR_RF)
+        if os.path.isdir(os.path.join(DIR_RF, d)) and d.startswith("DNA_vs_")
+        and d != "DNA_vs_DNA_2"
     }
     rna_models = [m for m in MODEL_ORDER if m in available]
     log.info(f"RNA models: {rna_models}")
 
     # ── 3. DNA baseline split by type ────────────────────────────────────────
-    log.info("Computing DNA baseline (DNA_2)...")
-    dna_by_type = collect_by_type("DNA_2", type_map)
+    log.info("Computing DNA baseline (DNA_vs_DNA_2)...")
+    dna_by_type = collect_by_type("DNA_2", type_map)   # CHANGED: model="DNA_2"
 
     # ── 4. RNA distances split by type ───────────────────────────────────────
     rna_by_type: dict[str, dict[str, list]] = {}
@@ -304,7 +313,6 @@ def main():
             has_rna = plot_kde(ax, rna_by_type[model].get(rna_type, []),
                                color=COLOR_RNA)
 
-            # ggplot-style panel
             ax.set_facecolor("#F2F2F2")
             ax.grid(True, color="white", linewidth=0.7, linestyle="-")
             ax.spines[:].set_visible(False)
@@ -312,13 +320,10 @@ def main():
             ax.set_xlim(0, 1)
             ax.set_ylim(bottom=0)
 
-            # Column header — top row only
             if row_idx == 0:
                 ax.set_title(model, fontsize=13, fontweight="bold", pad=5)
 
-            # Row label — rightmost column only
             if col_idx == n_cols - 1:
-                n_loci = len(rna_by_type[model].get(rna_type, [])) // 90  # approx
                 ax.annotate(
                     rna_type,
                     xy=(1.02, 0.5), xycoords="axes fraction",
@@ -327,14 +332,12 @@ def main():
                     annotation_clip=False
                 )
 
-            # CHANGE 2: removed per-panel set_ylabel / set_xlabel
-
     # ── 6. Legend ─────────────────────────────────────────────────────────────
     legend_handles = [
         mpatches.Patch(color=COLOR_RNA, alpha=0.85,
-                       label=r"$nRF(T_{\mathrm{rna}},\,T_{\mathrm{dna}})$"),
+                       label=r"$nRF(T_{\mathrm{rna\_best}},\,T_{\mathrm{dna\_best}})$"),
         mpatches.Patch(color=COLOR_DNA, alpha=0.85,
-                       label=r"$nRF(T_{\mathrm{dna}},\,T_{\mathrm{dna2}})$"),
+                       label=r"$nRF(T_{\mathrm{dna\_best}},\,T_{\mathrm{dna2\_best}})$"),
     ]
     fig.legend(
         handles=legend_handles, loc="upper center", ncol=2,
@@ -342,13 +345,12 @@ def main():
         bbox_to_anchor=(0.5, 1.02)
     )
     fig.suptitle(
-        "Normalised RF distance by RNA structural type and substitution model",
+        "Normalised RF distance (best trees) by RNA structural type and substitution model",
         fontsize=20, y=1.05
     )
 
     plt.tight_layout(rect=[0.03, 0.03, 0.88, 1])
 
-    # CHANGE 2: single shared axis labels
     fig.text(0.44, 0.01, "Normalised RF distance", ha="center", fontsize=16)
     fig.text(0.01, 0.5,  "Density", va="center", rotation=90, fontsize=16)
 
