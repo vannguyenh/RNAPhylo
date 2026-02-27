@@ -44,45 +44,47 @@ DIR_DNA_TREES = os.path.join(DIR_OUTPUTS, "inferred_trees", "DNA")
 RFAM_TBL         = os.path.join(DIR_WORKING, "inputs/Rfam.full.seed.tbl")
 RFAM_FAMILY_TXT  = os.path.join(DIR_WORKING, "inputs/family.txt")
 
-OUTPUT_FIG = os.path.join(DIR_OUTPUTS, "rf_best_density_by_rna_type.pdf")
+OUTPUT_FIG = os.path.join(DIR_OUTPUTS, "260226_rf_best_density_by_rna_type.pdf")
 
 # --- RNA type groups ----------------------------------------------------------
 RNA_TYPE_ORDER = [
+    "tRNA",
     "rRNA",
-    "Ribozyme",
-    "snRNA",
-    "Intron",
-    "snoRNA",
-    "Cis-reg / Riboswitch",
-    "IRES",
-    "sRNA / Antisense",
-    "miRNA",
     "lncRNA",
+    "miRNA",
+    "sRNA",
+    "snRNA / snoRNA",
+    "Antisense",
+    "Cis-reg",
+    "CRISPR",
+    "Antitoxin",
+    "Intron",
     "Other",
 ]
 
 TYPE_MAP = {
-    "Gene; rRNA;":                       "rRNA",
-    "Gene; tRNA;":                       "Other",
-    "Gene; ribozyme;":                   "Ribozyme",
-    "Gene; snRNA; splicing;":            "snRNA",
-    "Gene; snRNA;":                      "snRNA",
-    "Gene; snRNA; snoRNA; CD-box;":      "snoRNA",
-    "Gene; snRNA; snoRNA; HACA-box;":    "snoRNA",
-    "Gene; snRNA; snoRNA; scaRNA;":      "snoRNA",
-    "Cis-reg; riboswitch;":              "Cis-reg / Riboswitch",
-    "Cis-reg; leader;":                  "Cis-reg / Riboswitch",
-    "Cis-reg; thermoregulator;":         "Cis-reg / Riboswitch",
-    "Cis-reg; frameshift_element;":      "Cis-reg / Riboswitch",
-    "Cis-reg;":                          "Cis-reg / Riboswitch",
-    "Cis-reg; IRES;":                    "IRES",
     "Gene; miRNA;":                      "miRNA",
-    "Gene; sRNA;":                       "sRNA / Antisense",
-    "Gene; antisense;":                  "sRNA / Antisense",
-    "Gene; antitoxin;":                  "sRNA / Antisense",
-    "Intron;":                           "Intron",
+    "Gene; sRNA;":                       "sRNA",
+    "Gene; snRNA; splicing;":            "snRNA / snoRNA",
+    "Gene; snRNA;":                      "snRNA / snoRNA",
+    "Gene; snRNA; snoRNA; CD-box;":      "snRNA / snoRNA",
+    "Gene; snRNA; snoRNA; HACA-box;":    "snRNA / snoRNA",
+    "Gene; snRNA; snoRNA; scaRNA;":      "snRNA / snoRNA",
+    "Gene; snRNA; snoRNA;":              "snRNA / snoRNA",
     "Gene; lncRNA;":                     "lncRNA",
-    "Gene; CRISPR;":                     "Other",
+    "Gene; rRNA;":                       "rRNA",
+    "Gene; antisense;":                  "Antisense",
+    "Cis-reg;":                          "Cis-reg",
+    "Cis-reg; leader;":                  "Cis-reg",
+    "Cis-reg; riboswitch;":              "Cis-reg",
+    "Cis-reg; thermoregulator;":         "Cis-reg",
+    "Cis-reg; IRES;":                    "Cis-reg",
+    "Cis-reg; frameshift_element;":      "Cis-reg",
+    "Gene; CRISPR;":                     "CRISPR",
+    "Gene; antitoxin;":                  "Antitoxin",
+    "Intron;":                           "Intron",
+    "Gene; tRNA;":                       "tRNA",
+    "Gene; ribozyme;":                   "Other",
     "Gene;":                             "Other",
 }
 
@@ -122,15 +124,16 @@ def build_rna_type_map() -> dict[str, str]:
     def heuristic(name):
         n = name.lower()
         if re.search(r'rrna|_rrna|16s|23s|18s|28s|5s_r|ssu_r|lsu_r', n): return "rRNA"
-        if re.search(r'ribozyme', n): return "Ribozyme"
-        if re.search(r'^u\d|snrna|splicing', n): return "snRNA"
-        if re.search(r'snor|snoRNA', n, re.I): return "snoRNA"
-        if re.search(r'intron', n): return "Intron"
-        if re.search(r'riboswitch|leader|thermometer|frameshift', n): return "Cis-reg / Riboswitch"
-        if re.search(r'ires', n): return "IRES"
+        if re.search(r'^u\d|snrna|splicing|snor', n): return "snRNA / snoRNA"
         if re.search(r'^mir-|let-7|mirna', n): return "miRNA"
-        if re.search(r'srna|antisense|csrb|6s\b', n): return "sRNA / Antisense"
+        if re.search(r'srna|6s\b', n): return "sRNA"
         if re.search(r'lncrna', n): return "lncRNA"
+        if re.search(r'antisense', n): return "Antisense"
+        if re.search(r'riboswitch|leader|thermometer|frameshift|ires', n): return "Cis-reg"
+        if re.search(r'crispr', n): return "CRISPR"
+        if re.search(r'antitoxin', n): return "Antitoxin"
+        if re.search(r'intron', n): return "Intron"
+        if re.search(r'trna', n): return "tRNA"
         return "Other"
     return {row["AC"]: heuristic(row["ID"]) for _, row in tbl.iterrows()}
 
@@ -300,7 +303,7 @@ def main():
     fig, axes = plt.subplots(
         n_rows, n_cols,
         figsize=(n_cols * 3.2, n_rows * 2.8),
-        sharex=True, sharey=False
+        sharex=True, sharey="row"
     )
     axes = np.array(axes).reshape(n_rows, n_cols)
 
@@ -319,6 +322,9 @@ def main():
             ax.tick_params(labelsize=11)
             ax.set_xlim(0, 1)
             ax.set_ylim(bottom=0)
+
+            if col_idx != 0:
+                ax.tick_params(labelleft=False)
 
             if row_idx == 0:
                 ax.set_title(model, fontsize=13, fontweight="bold", pad=5)
