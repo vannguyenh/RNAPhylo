@@ -4,13 +4,16 @@ from os.path import join, isfile
 from Bio import Phylo
 import logging
 from datetime import datetime
-import time
 import subprocess
-import re
 
 LOG_FORMAT = '%(asctime)s - %(levelname)s - %(message)s'
 
-DIR_WORKING = '/Users/u7875558/RNAPhylo/seedAlignment_AllModels'
+
+# working path for seed data
+#DIR_WORKING = '/Users/u7875558/RNAPhylo/seedAlignment_AllModels'
+# working path for full data
+DIR_WORKING = '/Users/u7875558/RNAPhylo/fullAlignment'
+
 DIR_OUTPUTS = join(DIR_WORKING, 'outputs')
 DIR_TREES = join(DIR_OUTPUTS, 'inferred_trees')
 DIR_DNA = join(DIR_TREES, 'DNA')
@@ -47,15 +50,16 @@ def check_branch_length(diroutput, rna):
     return issue
     
 def check_inferred_tree(dir_rna):
+    if not os.path.isdir(dir_rna):
+        logging.warning(f"{dir_rna} does not exist.")
+        return False
     if len(os.listdir(dir_rna)) != 50:
         logging.warning(f"{dir_rna} does not have 10 trees.")
         return False
-    else:
-        return True
+    return True
         
 def extract_highestloglh(dir_path):
     lh = dict()
-    files = os.listdir(dir_path)
     seeds = [f"{i:02d}" for i in range(1, 11)]
 
     for file in os.listdir(dir_path):
@@ -67,7 +71,7 @@ def extract_highestloglh(dir_path):
                     lh[seed] = float(best_value)
     return sorted(lh.items(), key=lambda x: x[1], reverse=True)[0]
     
-def extract_highestLH_2Trees_ipseudo_dnaextra(dir_output, rna):
+def extract_highestLH_2Trees_rna_dna2(dir_output, rna):
     dna_path = join(DIR_DNA, rna)
     rna_path = join(dir_output, rna)
     if check_inferred_tree(dna_path) and check_inferred_tree(rna_path):
@@ -123,7 +127,7 @@ def main():
     logging.basicConfig(filename=log_filename, level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
    
     for rna in os.listdir(DIR_DNA):
-        bestTrees = extract_highestLH_2Trees_ipseudo_dnaextra(join(DIR_TREES, MODEL), rna)
+        bestTrees = extract_highestLH_2Trees_rna_dna2(join(DIR_TREES, MODEL), rna)
         if bestTrees is not None:
             dnaTree = join(DIR_DNA, rna, f"RAxML_bestTree.{rna}.{bestTrees['DNA'][0]}")
             rnaTree = join(DIR_TREES, MODEL, rna, 
