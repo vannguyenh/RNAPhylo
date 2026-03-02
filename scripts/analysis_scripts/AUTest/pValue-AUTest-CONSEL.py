@@ -188,14 +188,16 @@ def main():
 
                 combineTreeFiles(persite_path, rna, dnaTree, rnaTree)
                 # Use reduced SS and reduced FASTA if present
-                if isfile(join(DIR_FASTA, f'{rna}.nodup.fa.reduced')):
-                    fasta_file_red = join(DIR_FASTA, f'{rna}.nodup.fa.reduced')
+                fasta_red_path = join(DIR_INPUTS, 'fasta', f'{rna}.nodup.fa.reduced')
+                if isfile(fasta_red_path):
+                    fasta_file_red = fasta_red_path
                 else:
                     logging.warning(f'No reduced FASTA found for {rna}; skipping reduced attempt.')
                     fasta_file_red = None
 
-                if isfile(join(DIR_SS, f'{rna}.ss.reduced')):
-                    ss_file_red = join(DIR_SS, f'{rna}.ss.reduced')
+                ss_red_path = join(DIR_SS, f'{rna}.ss.reduced')
+                if isfile(ss_red_path):
+                    ss_file_red = ss_red_path
                 else:
                     logging.warning(f'No reduced SS found for {rna}; skipping reduced attempt.')
                     ss_file_red = None
