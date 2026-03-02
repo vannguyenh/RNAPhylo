@@ -21,7 +21,8 @@ DIR_AU_LOGS = join(DIR_WORKING, 'logs', '260208_AU_test_RNAmodels')
 os.makedirs(DIR_AU_LOGS, exist_ok=True)
 
 DIR_INPUTS = join(DIR_WORKING, 'inputs')
-DIR_FASTA = join(DIR_INPUTS, 'fasta_files')
+#DIR_FASTA _ join(DIR_INPUTS, 'fasta')
+#DIR_FASTA = join(DIR_INPUTS, 'subsample_redirect')
 DIR_SS = join(DIR_INPUTS, 'ss_files')
 
 def check_branch_length(diroutput, rna):
@@ -48,7 +49,26 @@ def check_branch_length(diroutput, rna):
     if len(delete_files) > 0:
         issue=True
     return issue
-    
+
+
+def get_fasta_file(rna):
+    """
+    Return the FASTA path for an RNA family.
+    - First check subsample (for families >500 taxa)
+    - Fall back to fasta (for families ≤500 taxa)
+    """
+    # Option 1: subsample folder (families that were subsampled)
+    subsamp = join(DIR_INPUTS, 'subsample', f'{rna}.subsamp.fa')
+    if isfile(subsamp):
+        return subsamp
+
+    # Option 2: original fasta folder (families not subsampled)
+    fasta = join(DIR_INPUTS, 'fasta', f'{rna}.nodup.fa')
+    if isfile(fasta):
+        return fasta
+
+    return None
+
 def check_inferred_tree(dir_rna):
     if not os.path.isdir(dir_rna):
         logging.warning(f"{dir_rna} does not exist.")
@@ -127,6 +147,11 @@ def main():
     logging.basicConfig(filename=log_filename, level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
    
     for rna in os.listdir(DIR_DNA):
+        fasta_file = get_fasta_file(rna)
+        if fasta_file is None:
+            logging.warning(f"No FASTA file found for {rna}, skipping.")
+            continue
+
         bestTrees = extract_highestLH_2Trees_rna_dna2(join(DIR_TREES, MODEL), rna)
         if bestTrees is not None:
             dnaTree = join(DIR_DNA, rna, f"RAxML_bestTree.{rna}.{bestTrees['DNA'][0]}")
@@ -144,7 +169,8 @@ def main():
             prefix_consel = join(persite_path, f'{rna}_consel')
 
             ss_file = join(DIR_SS, f'{rna}.ss')
-            fasta_file = join(DIR_FASTA, f'{rna}.nodup.fa')
+            #fasta_file = join(DIR_FASTA, f'{rna}.nodup.fa')
+            #fasta_file = join(DIR_FASTA, f'{rna}.subsamp.fa')
                 
             try:
                 runningCONSEL(rna, fasta_file, ss_file, persite_suffix, persite_path, prefix_consel, MODEL)
