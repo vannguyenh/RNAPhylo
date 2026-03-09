@@ -31,34 +31,39 @@ import matplotlib.patches as mpatches
 from scipy.stats import gaussian_kde
 from Bio import Phylo
 
+
 # =============================================================================
 # CONFIGURATION — edit paths here
 # =============================================================================
 
-DIR_WORKING   = os.path.expanduser("~/RNAPhylo/seedAlignment_AllModels")
+#DIR_WORKING   = os.path.expanduser("~/RNAPhylo/seedAlignment_AllModels")
+DIR_WORKING = "/Users/u7875558/RNAPhylo/fullAlignment"
+
 DIR_OUTPUTS   = os.path.join(DIR_WORKING, "outputs")
 DIR_RF        = os.path.join(DIR_OUTPUTS, "260220_RF_distances")   # CHANGED
 DIR_DNA_TREES = os.path.join(DIR_OUTPUTS, "inferred_trees", "DNA")
 
 # Rfam metadata files (adjust paths if needed)
-RFAM_TBL         = os.path.join(DIR_WORKING, "inputs/Rfam.full.seed.tbl")
+#RFAM_TBL         = os.path.join(DIR_WORKING, "inputs/Rfam.full.seed.tbl")
+
+RFAM_TBL         = "~/RNAPhylo/seedAlignment_AllModels/inputs/Rfam.full.seed.tbl"
 RFAM_FAMILY_TXT  = os.path.join(DIR_WORKING, "inputs/family.txt")
 
-OUTPUT_FIG = os.path.join(DIR_OUTPUTS, "260226_rf_best_density_by_rna_type.pdf")
+OUTPUT_FIG = os.path.join(DIR_OUTPUTS, "rf_best_density_by_rna_type.pdf")
 
 # --- RNA type groups ----------------------------------------------------------
 RNA_TYPE_ORDER = [
-    "tRNA",
-    "rRNA",
-    "lncRNA",
     "miRNA",
     "sRNA",
     "snRNA / snoRNA",
+    "lncRNA",
+    "rRNA",
     "Antisense",
     "Cis-reg",
     "CRISPR",
     "Antitoxin",
     "Intron",
+    "tRNA",
     "Other",
 ]
 
@@ -214,6 +219,7 @@ def collect_by_type(model: str,
 
     result: dict[str, list[float]] = {g: [] for g in RNA_TYPE_ORDER}
     skipped = 0
+    skip_reasons = {"no_rfdist": 0, "no_taxa": 0, "normalise_fail": 0}
 
     for locus in loci:
         # CHANGED: read .best.rfdist (single value) instead of 10×10 .rfdist
@@ -221,16 +227,19 @@ def collect_by_type(model: str,
         rf = parse_best_rfdist(rfdist_path)
         if rf is None:
             skipped += 1
+            skip_reasons["no_rfdist"] += 1
             continue
 
         n_taxa = count_taxa(locus)
         if n_taxa is None:
             skipped += 1
+            skip_reasons["no_taxa"] += 1
             continue
 
         nrf = normalise(rf, n_taxa)
         if nrf is None:
             skipped += 1
+            skip_reasons["normalise_fail"] += 1
             continue
 
         group = type_map.get(locus, "Other")
@@ -239,7 +248,8 @@ def collect_by_type(model: str,
         result[group].append(nrf)       # CHANGED: single value, not extend()
 
     log.info(f"  DNA_vs_{model}: {len(loci)-skipped}/{len(loci)} loci, "
-             f"{skipped} skipped")
+             f"skipped={skipped} {skip_reasons}")
+    log.info(f"  lncRNA loci collected: {len(result.get('lncRNA', []))}")
     return result
 
 
@@ -264,11 +274,13 @@ def main():
     type_map = build_rna_type_map()
 
     # ── 2. Discover RNA models ────────────────────────────────────────────────
-    MODEL_ORDER = [
-        "S16", "S16A", "S16B",
-        "S7A", "S7B", "S7C", "S7D", "S7E", "S7F",
-        "S6A", "S6B", "S6C", "S6D", "S6E",
-    ]
+    #MODEL_ORDER = [
+    #    "S16", "S16A", "S16B",
+    #    "S7A", "S7B", "S7C", "S7D", "S7E", "S7F",
+    #    "S6A", "S6B", "S6C", "S6D", "S6E",
+    #]
+
+    MODEL_ORDER = ["S16", "S7A", "S6A"]
     # CHANGED: look for DNA_vs_{model} folders
     available = {
         d.replace("DNA_vs_", "") for d in os.listdir(DIR_RF)
@@ -288,83 +300,94 @@ def main():
         log.info(f"Processing {model}...")
         rna_by_type[model] = collect_by_type(model, type_map)
 
-    # ── 5. Determine active rows (types with enough data) ────────────────────
+    # ── 5. Determine active rows ──────────────────────────────────────────────
     MIN_VALS = 5
-    active_types = [
+    all_active_types = [
         g for g in RNA_TYPE_ORDER
         if any(len(rna_by_type[m].get(g, [])) >= MIN_VALS
                for m in rna_models)
     ]
-    log.info(f"Active RNA types ({len(active_types)}): {active_types}")
+    log.info(f"Active RNA types ({len(all_active_types)}): {all_active_types}")
 
-    n_rows = len(active_types)
-    n_cols = len(rna_models)
+    # ── 6. Plot both figures ──────────────────────────────────────────────────
+    def make_figure(active_types, output_path, title):
+        n_rows = len(active_types)
+        n_cols = len(rna_models)
 
-    fig, axes = plt.subplots(
-        n_rows, n_cols,
-        figsize=(n_cols * 3.2, n_rows * 2.8),
-        sharex=True, sharey="row"
+        fig, axes = plt.subplots(
+            n_rows, n_cols,
+            figsize=(n_cols * 3.2, n_rows * 2.8),
+            sharex=True, sharey=False
+        )
+        axes = np.array(axes).reshape(n_rows, n_cols)
+
+        for row_idx, rna_type in enumerate(active_types):
+            for col_idx, model in enumerate(rna_models):
+                ax = axes[row_idx, col_idx]
+
+                plot_kde(ax, dna_by_type.get(rna_type, []), color=COLOR_DNA)
+                plot_kde(ax, rna_by_type[model].get(rna_type, []), color=COLOR_RNA)
+
+                ax.set_facecolor("#F2F2F2")
+                ax.grid(True, color="white", linewidth=0.7, linestyle="-")
+                ax.spines[:].set_visible(False)
+                ax.tick_params(labelsize=11)
+                ax.set_xlim(0, 1)
+                ax.set_ylim(0, 5)
+
+                if col_idx != 0:
+                    ax.tick_params(labelleft=False)
+
+                if row_idx == 0:
+                    ax.set_title(model, fontsize=13, fontweight="bold", pad=5)
+
+                if col_idx == n_cols - 1:
+                    ax.annotate(
+                        rna_type,
+                        xy=(1.02, 0.5), xycoords="axes fraction",
+                        fontsize=12, fontweight="bold",
+                        va="center", ha="left", rotation=0,
+                        annotation_clip=False
+                    )
+
+        legend_handles = [
+            mpatches.Patch(color=COLOR_RNA, alpha=0.85,
+                           label=r"$nRF(T_{\mathrm{RNA\_best}},\,T_{\mathrm{DNA\_best}})$"),
+            mpatches.Patch(color=COLOR_DNA, alpha=0.85,
+                           label=r"$nRF(T_{\mathrm{DNA\_best}},\,T_{\mathrm{DNA_2\_best}})$"),
+        ]
+        fig.legend(
+            handles=legend_handles, loc="upper center", ncol=2,
+            fontsize=16, frameon=True, framealpha=0.9,
+            bbox_to_anchor=(0.5, 1.02)
+        )
+        fig.suptitle(title, fontsize=20, y=1.05)
+
+        plt.tight_layout(rect=[0.03, 0.03, 0.88, 1])
+
+        fig.text(0.44, 0.01, "Normalised RF distance", ha="center", fontsize=16)
+        fig.text(0.01, 0.5,  "Density", va="center", rotation=90, fontsize=16)
+
+        fig.savefig(output_path, dpi=300, bbox_inches="tight")
+        fig.savefig(output_path.replace(".pdf", ".png"), dpi=300, bbox_inches="tight")
+        log.info(f"Saved: {output_path}")
+        plt.show()
+
+    # Figure 1 — all RNA types
+    make_figure(
+        active_types=all_active_types,
+        output_path=OUTPUT_FIG,
+        title="Normalised RF distance (best trees) by RNA structural type and substitution model",
     )
-    axes = np.array(axes).reshape(n_rows, n_cols)
 
-    for row_idx, rna_type in enumerate(active_types):
-        for col_idx, model in enumerate(rna_models):
-            ax = axes[row_idx, col_idx]
-
-            has_dna = plot_kde(ax, dna_by_type.get(rna_type, []),
-                               color=COLOR_DNA)
-            has_rna = plot_kde(ax, rna_by_type[model].get(rna_type, []),
-                               color=COLOR_RNA)
-
-            ax.set_facecolor("#F2F2F2")
-            ax.grid(True, color="white", linewidth=0.7, linestyle="-")
-            ax.spines[:].set_visible(False)
-            ax.tick_params(labelsize=11)
-            ax.set_xlim(0, 1)
-            ax.set_ylim(bottom=0)
-
-            if col_idx != 0:
-                ax.tick_params(labelleft=False)
-
-            if row_idx == 0:
-                ax.set_title(model, fontsize=13, fontweight="bold", pad=5)
-
-            if col_idx == n_cols - 1:
-                ax.annotate(
-                    rna_type,
-                    xy=(1.02, 0.5), xycoords="axes fraction",
-                    fontsize=12, fontweight="bold",
-                    va="center", ha="left", rotation=0,
-                    annotation_clip=False
-                )
-
-    # ── 6. Legend ─────────────────────────────────────────────────────────────
-    legend_handles = [
-        mpatches.Patch(color=COLOR_RNA, alpha=0.85,
-                       label=r"$nRF(T_{\mathrm{rna\_best}},\,T_{\mathrm{dna\_best}})$"),
-        mpatches.Patch(color=COLOR_DNA, alpha=0.85,
-                       label=r"$nRF(T_{\mathrm{dna\_best}},\,T_{\mathrm{dna2\_best}})$"),
-    ]
-    fig.legend(
-        handles=legend_handles, loc="upper center", ncol=2,
-        fontsize=16, frameon=True, framealpha=0.9,
-        bbox_to_anchor=(0.5, 1.02)
+    # Figure 2 — selected types only
+    SELECTED_TYPES = ["rRNA", "miRNA", "Antisense"]
+    selected_active = [g for g in SELECTED_TYPES if g in all_active_types]
+    make_figure(
+        active_types=selected_active,
+        output_path=OUTPUT_FIG.replace(".pdf", "_selected.pdf"),
+        title="Normalised RF distance (best trees): rRNA, miRNA, Antisense",
     )
-    fig.suptitle(
-        "Normalised RF distance (best trees) by RNA structural type and substitution model",
-        fontsize=20, y=1.05
-    )
-
-    plt.tight_layout(rect=[0.03, 0.03, 0.88, 1])
-
-    fig.text(0.44, 0.01, "Normalised RF distance", ha="center", fontsize=16)
-    fig.text(0.01, 0.5,  "Density", va="center", rotation=90, fontsize=16)
-
-    # ── 7. Save ───────────────────────────────────────────────────────────────
-    fig.savefig(OUTPUT_FIG, dpi=300, bbox_inches="tight")
-    fig.savefig(OUTPUT_FIG.replace(".pdf", ".png"), dpi=300, bbox_inches="tight")
-    log.info(f"Saved: {OUTPUT_FIG}")
-    plt.show()
 
 
 if __name__ == "__main__":
