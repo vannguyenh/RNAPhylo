@@ -17,7 +17,7 @@ DATASET_CONFIGS = {
     },
     'full': {
         'working_dir': '/Users/u7875558/RNAPhylo/fullAlignment',
-        'ss_dir': 'ss_all',
+        'ss_dir': 'ss_files',
         'log_tag': '260208_AU_test_RNAmodels',
     },
 }
@@ -142,6 +142,10 @@ def main():
     parser = argparse.ArgumentParser(description='Run AU test via CONSEL for RNA phylogenetics.')
     parser.add_argument('--dataset', choices=['seed', 'full'], required=True,
                         help='Which alignment dataset to use: "seed" or "full".')
+    parser.add_argument('--model', type=str, default=None,
+                        help='RNA model (e.g., S6A). If omitted, will prompt interactively.')
+    parser.add_argument('--skip-existing', action='store_true',
+                        help='Skip families that already have .pv files.')
     args = parser.parse_args()
 
     cfg = DATASET_CONFIGS[args.dataset]
@@ -154,7 +158,7 @@ def main():
     DIR_AU_LOGS = join(DIR_WORKING, 'logs', cfg['log_tag'])
     os.makedirs(DIR_AU_LOGS, exist_ok=True)
 
-    MODEL = input('Model: ')
+    MODEL = args.model if args.model else input('Model: ')
     DIR_AU = join(DIR_OUTPUTS, '260208_AU_Test_RAxML_RNAmodels', MODEL)
     os.makedirs(DIR_AU, exist_ok=True)
 
@@ -164,15 +168,20 @@ def main():
     # For seed: iterate all inferred DNA trees; for full: iterate existing AU output folders
     rna_list = os.listdir(DIR_DNA if args.dataset == 'seed' else DIR_AU)
 
+    skipped_existing = 0
     for rna in rna_list:
-        # Resolve FASTA file
-        if args.dataset == 'seed':
-            fasta_file = get_fasta_file(rna, DIR_INPUTS)
-            if fasta_file is None:
-                logging.warning(f"No FASTA file found for {rna}, skipping.")
+        # Skip families that already have .pv output
+        if args.skip_existing:
+            pv_path = join(DIR_AU, rna, f'{rna}_consel.pv')
+            if isfile(pv_path):
+                skipped_existing += 1
                 continue
-        else:
-            fasta_file = join(DIR_INPUTS, 'fasta', f'{rna}.nodup.fa')
+
+        # Resolve FASTA file (check subsample first for families >500 taxa)
+        fasta_file = get_fasta_file(rna, DIR_INPUTS)
+        if fasta_file is None:
+            logging.warning(f"No FASTA file found for {rna}, skipping.")
+            continue
 
         bestTrees = extract_highestLH_2Trees_rna_dna2(join(DIR_TREES, MODEL), rna, DIR_DNA)
         if bestTrees is None:
@@ -221,6 +230,11 @@ def main():
                     logging.info(f"{rna}: reduced attempt produced *.sitelh.")
                 else:
                     logging.error(f"{rna}: reduced attempt still did not produce *.sitelh.")
+
+
+    if args.skip_existing:
+        logging.info(f"Skipped {skipped_existing} families with existing .pv files.")
+        print(f"Skipped {skipped_existing} families with existing .pv files.")
 
 
 if __name__ == '__main__':
