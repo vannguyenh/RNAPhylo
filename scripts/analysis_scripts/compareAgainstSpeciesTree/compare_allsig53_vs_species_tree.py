@@ -242,7 +242,7 @@ def relabel_tree_to_species_names(tree, ncbi):
 # =============================================================================
 
 def process_family_allsig(rfam_id, models, dir_au, cache_dir, ncbi,
-                          trees_dir):
+                          trees_dir, iqtree_log_dir, dataset='seed'):
     """
     Process one family across all models.
 
@@ -254,62 +254,27 @@ def process_family_allsig(rfam_id, models, dir_au, cache_dir, ncbi,
     family_trees_dir = join(trees_dir, rfam_id)
     os.makedirs(family_trees_dir, exist_ok=True)
 
-    # ----- Rfam tree (optional — does not block DNA/RNA comparison) -----
+    # IQ-TREE log directory for this family
+    family_log_dir = join(iqtree_log_dir, rfam_id)
+    os.makedirs(family_log_dir, exist_ok=True)
+
+    # ----- Rfam tree (seed only — not available for full alignment) -----
     rfam_result = None
     n_rfam_leaves = 0
     n_rfam_unique = 0
     rfam_tree_original = None  # keep original labels for direct tree comparison
 
-    rfam_tree, rfam_raw = load_and_parse_rfam_tree(rfam_id)
-    if rfam_tree is not None:
-        rfam_tree_original = rfam_tree.clone(depth=2)  # before any relabeling
-        rfam_taxid_map = fetch_rfam_tree_taxid_mapping(rfam_id, cache_dir)
-        if rfam_taxid_map:
-            rfam_leaf_to_taxid = build_rfam_leaf_to_taxid(rfam_tree, rfam_taxid_map)
+    # Load Rfam tree (for direct comparisons; species tree comparison done below)
+    if dataset == 'seed':
+        rfam_tree, _ = load_and_parse_rfam_tree(rfam_id)
+        if rfam_tree is not None:
+            rfam_tree_original = rfam_tree.clone(depth=2)
             n_rfam_leaves = len([l for l in rfam_tree.leaf_node_iter() if l.taxon])
-            n_rfam_mapped = len(rfam_leaf_to_taxid)
-
-            if n_rfam_mapped >= MIN_UNIQUE_TAXA:
-                rfam_tree, rfam_dups, rfam_unique_taxids = prune_duplicate_taxa(
-                    rfam_tree, rfam_leaf_to_taxid
-                )
-                n_rfam_unique = len(rfam_unique_taxids)
-
-                if n_rfam_unique >= MIN_UNIQUE_TAXA:
-                    relabel_tree_to_taxids(rfam_tree, rfam_leaf_to_taxid)
-                    rfam_species_tree, rfam_polytomies, rfam_merged = get_ncbi_species_tree(
-                        rfam_unique_taxids, ncbi
-                    )
-                    if rfam_species_tree is not None:
-                        # Apply merged taxid translations (skip if target already exists)
-                        if rfam_merged:
-                            existing = {l.taxon.label for l in rfam_tree.leaf_node_iter() if l.taxon}
-                            for leaf in rfam_tree.leaf_node_iter():
-                                if leaf.taxon and leaf.taxon.label in [str(k) for k in rfam_merged]:
-                                    new_label = str(rfam_merged[int(leaf.taxon.label)])
-                                    if new_label not in existing:
-                                        existing.discard(leaf.taxon.label)
-                                        leaf.taxon.label = new_label
-                                        existing.add(new_label)
-
-                        rfam_sp_copy = rfam_species_tree.clone(depth=2)
-                        rfam_copy = rfam_tree.clone(depth=2)
-                        rfam_result = compute_rf_and_ic_simple(rfam_sp_copy, rfam_copy)
-
-                        # Save Rfam trees with species name labels
-                        rfam_sp_named = relabel_tree_to_species_names(rfam_species_tree, ncbi)
-                        save_newick(rfam_sp_named,
-                                    join(family_trees_dir, f"{rfam_id}_species_tree_rfam.newick"))
-                        rfam_named = relabel_tree_to_species_names(rfam_tree, ncbi)
-                        save_newick(rfam_named,
-                                    join(family_trees_dir, f"{rfam_id}_rfam_tree.newick"))
-
-    if rfam_result is None:
-        log.info(f"  Rfam tree comparison not possible (too few unique species)")
 
     # ----- DNA / RNA trees (per model) -----
     results = []
     dna_result_cache = None
+    rfam_sp_result_cache = None
     dna_vs_rfam_cache = None
     dna_saved = False
 
@@ -333,24 +298,38 @@ def process_family_allsig(rfam_id, models, dir_au, cache_dir, ncbi,
         n_dna_leaves = len([l for l in dna_tree.leaf_node_iter() if l.taxon])
 
         # --- Step 2: Direct tree-to-tree comparisons (no species collapsing) ---
+        fl = family_log_dir  # shorthand
+
         # RNA vs DNA
-        rna_vs_dna = compute_rf_direct(rna_tree, dna_tree)
+        rna_vs_dna = compute_rf_direct(
+            rna_tree, dna_tree,
+            tree1_path=join(fl, f'{model}.nwk'),
+            tree2_path=join(fl, 'DNA.nwk'),
+            prefix=join(fl, f'{model}_DNA'))
 
         # DNA vs Rfam (cached — same DNA tree across models)
         if dna_vs_rfam_cache is None and rfam_tree_original is not None:
-            dna_vs_rfam_cache = compute_rf_direct(dna_tree, rfam_tree_original)
+            dna_vs_rfam_cache = compute_rf_direct(
+                dna_tree, rfam_tree_original,
+                tree1_path=join(fl, 'DNA.nwk'),
+                tree2_path=join(fl, 'rfam.nwk'),
+                prefix=join(fl, 'DNA_rfam'))
 
         # RNA vs Rfam
         rna_vs_rfam = None
         if rfam_tree_original is not None:
-            rna_vs_rfam = compute_rf_direct(rna_tree, rfam_tree_original)
+            rna_vs_rfam = compute_rf_direct(
+                rna_tree, rfam_tree_original,
+                tree1_path=join(fl, f'{model}.nwk'),
+                tree2_path=join(fl, 'rfam.nwk'),
+                prefix=join(fl, f'{model}_rfam'))
 
         # --- Step 1: Species tree comparison (requires collapsing to unique species) ---
         label_to_taxid, label_format = resolve_leaf_taxids(
             dna_tree, rfam_id, cache_dir, ncbi
         )
 
-        sp_rfam_result = rfam_result  # from Rfam section above
+        sp_rfam_result = None
         sp_dna_result = None
         sp_rna_result = None
         n_unique_taxa = 0
@@ -389,11 +368,51 @@ def process_family_allsig(rfam_id, models, dir_au, cache_dir, ncbi,
 
                     if dna_result_cache is None:
                         dna_result_cache = compute_rf_and_ic_simple(
-                            dna_species_tree.clone(2), dna_sp.clone(2))
+                            dna_species_tree.clone(2), dna_sp.clone(2),
+                            log_prefix=join(fl, 'DNA_spec'))
 
                     sp_dna_result = dna_result_cache
                     sp_rna_result = compute_rf_and_ic_simple(
-                        dna_species_tree.clone(2), rna_sp.clone(2))
+                        dna_species_tree.clone(2), rna_sp.clone(2),
+                        log_prefix=join(fl, f'{model}_spec'))
+
+                    # Rfam vs same species tree (cached — same result across models)
+                    if rfam_sp_result_cache is None and rfam_tree_original is not None:
+                        # Prune Rfam tree to the same taxid set as DNA/RNA
+                        rfam_taxid_map = fetch_rfam_tree_taxid_mapping(rfam_id, cache_dir)
+                        if rfam_taxid_map:
+                            rfam_for_sp = load_and_parse_rfam_tree(rfam_id)[0]
+                            if rfam_for_sp is not None:
+                                rfam_l2t = build_rfam_leaf_to_taxid(rfam_for_sp, rfam_taxid_map)
+                                rfam_for_sp, _, _ = prune_duplicate_taxa(rfam_for_sp, rfam_l2t)
+                                relabel_tree_to_taxids(rfam_for_sp, rfam_l2t)
+
+                                # Apply same merged taxids
+                                if dna_merged:
+                                    existing = {l.taxon.label for l in rfam_for_sp.leaf_node_iter() if l.taxon}
+                                    for leaf in rfam_for_sp.leaf_node_iter():
+                                        if leaf.taxon and leaf.taxon.label in [str(k) for k in dna_merged]:
+                                            new_label = str(dna_merged[int(leaf.taxon.label)])
+                                            if new_label not in existing:
+                                                existing.discard(leaf.taxon.label)
+                                                leaf.taxon.label = new_label
+                                                existing.add(new_label)
+
+                                # Prune Rfam to same taxa as species tree
+                                sp_labels = {l.taxon.label for l in dna_species_tree.leaf_node_iter() if l.taxon}
+                                rfam_labels = {l.taxon.label for l in rfam_for_sp.leaf_node_iter() if l.taxon}
+                                rfam_extra = rfam_labels - sp_labels
+                                if rfam_extra:
+                                    rfam_for_sp.prune_taxa(
+                                        [t for t in rfam_for_sp.taxon_namespace if t.label in rfam_extra])
+
+                                common_rfam_sp = sp_labels & rfam_labels
+                                if len(common_rfam_sp) >= MIN_UNIQUE_TAXA:
+                                    rfam_sp_result_cache = compute_rf_and_ic_simple(
+                                        dna_species_tree.clone(2), rfam_for_sp.clone(2),
+                                        log_prefix=join(fl, 'rfam_spec'))
+
+                    sp_rfam_result = rfam_sp_result_cache
 
                     # Save trees with species name labels (once)
                     if not dna_saved:
@@ -421,31 +440,27 @@ def process_family_allsig(rfam_id, models, dir_au, cache_dir, ncbi,
             'label_format': label_format,
         }
 
-        # Step 1: vs species tree
+        # Step 1: vs species tree (nRF from IQ-TREE --normalize-dist, nIC from dendropy)
         for prefix, res in [('rfam', sp_rfam_result),
                             ('dna', sp_dna_result),
                             ('rna', sp_rna_result)]:
             if res is not None:
-                row[f'RF_{prefix}_vs_sp'] = res['RF']
                 row[f'nRF_{prefix}_vs_sp'] = res['nRF']
                 row[f'IC_{prefix}_vs_sp'] = res['IC']
                 row[f'nIC_{prefix}_vs_sp'] = res['nIC']
             else:
-                row[f'RF_{prefix}_vs_sp'] = np.nan
                 row[f'nRF_{prefix}_vs_sp'] = np.nan
                 row[f'IC_{prefix}_vs_sp'] = np.nan
                 row[f'nIC_{prefix}_vs_sp'] = np.nan
 
-        # Step 2: direct tree-to-tree
+        # Step 2: direct tree-to-tree (nRF from IQ-TREE --normalize-dist)
         for name, res in [('rna_vs_dna', rna_vs_dna),
                           ('dna_vs_rfam', dna_vs_rfam_cache),
                           ('rna_vs_rfam', rna_vs_rfam)]:
             if res is not None:
-                row[f'RF_{name}'] = res['RF']
                 row[f'nRF_{name}'] = res['nRF']
                 row[f'n_common_{name}'] = res['n_common']
             else:
-                row[f'RF_{name}'] = np.nan
                 row[f'nRF_{name}'] = np.nan
                 row[f'n_common_{name}'] = np.nan
 
@@ -457,7 +472,7 @@ def process_family_allsig(rfam_id, models, dir_au, cache_dir, ncbi,
     return results, None
 
 
-def compute_rf_and_ic_simple(species_tree, inferred_tree):
+def compute_rf_and_ic_simple(species_tree, inferred_tree, log_prefix=None):
     """
     Compute RF and IC distances between species tree and inferred tree.
 
@@ -504,15 +519,20 @@ def compute_rf_and_ic_simple(species_tree, inferred_tree):
     if n_taxa < MIN_UNIQUE_TAXA:
         return None
 
-    max_rf = 2 * (n_taxa - 3)
-    if max_rf <= 0:
+    if (n_taxa - 3) <= 0:
         return None
 
-    # RF distance via IQ-TREE
-    rf = compute_rf_iqtree(species_tree, inferred_tree)
-    if rf is None:
+    # nRF via IQ-TREE --normalize-dist (handles non-binary trees correctly)
+    kwargs = {'normalize': True}
+    if log_prefix:
+        kwargs.update({
+            'tree1_path': log_prefix + '_spec.nwk',
+            'tree2_path': log_prefix + '_inferred.nwk',
+            'prefix': log_prefix,
+        })
+    nrf = compute_rf_iqtree(species_tree, inferred_tree, **kwargs)
+    if nrf is None:
         return None
-    nrf = rf / max_rf if max_rf > 0 else 0.0
 
     # IC: incompatible splits — handles polytomies correctly
     species_tree.encode_bipartitions()
@@ -539,11 +559,11 @@ def compute_rf_and_ic_simple(species_tree, inferred_tree):
                 ic += 1
                 break
 
-    max_ic = n_taxa - 3  # max internal splits in binary inferred tree
+    max_ic = n_taxa - 3
     nic = ic / max_ic if max_ic > 0 else 0.0
 
     return {
-        'n_taxa': n_taxa, 'RF': rf, 'nRF': nrf, 'max_RF': max_rf,
+        'n_taxa': n_taxa, 'nRF': nrf,
         'IC': ic, 'nIC': nic, 'max_IC': max_ic,
     }
 
@@ -557,12 +577,18 @@ def normalize_label(label):
     return label
 
 
-def compute_rf_direct(tree1, tree2):
+def compute_rf_direct(tree1, tree2, tree1_path=None, tree2_path=None,
+                      prefix=None):
     """
     Compute RF distance between two gene trees directly (no species tree).
 
     Normalizes leaf labels, prunes to common set, then computes RF.
     Works even when trees have different numbers of leaves.
+
+    Args:
+        tree1_path, tree2_path: paths to save the pruned tree Newick files.
+        prefix: IQ-TREE -pre prefix for .rfdist and .log output.
+
     Returns: dict with RF, nRF, n_common, or None.
     """
     # Normalize labels on clones
@@ -596,16 +622,16 @@ def compute_rf_direct(tree1, tree2):
     if extra2:
         t2.prune_taxa([t for t in shared_tns if t.label in extra2])
 
-    max_rf = 2 * (n_common - 3)
-    if max_rf <= 0:
+    if (n_common - 3) <= 0:
         return None
 
-    rf = compute_rf_iqtree(t1, t2)
-    if rf is None:
+    nrf = compute_rf_iqtree(t1, t2, normalize=True,
+                            tree1_path=tree1_path,
+                            tree2_path=tree2_path, prefix=prefix)
+    if nrf is None:
         return None
 
-    nrf = rf / max_rf if max_rf > 0 else 0.0
-    return {'n_common': n_common, 'RF': rf, 'nRF': nrf, 'max_RF': max_rf}
+    return {'n_common': n_common, 'nRF': nrf}
 
 
 def save_newick(tree, path):
@@ -641,9 +667,14 @@ def process_all(dataset='seed', rna_filter=None, family_mode='all-significant'):
     cache_dir = join(cfg['working_dir'], 'outputs',
                      cfg['output_folder'], 'cache')
     trees_dir = join(output_dir, 'species_trees')
+    from datetime import datetime
+    date_str = datetime.now().strftime('%y%m%d')
+    iqtree_log_dir = join(output_dir, f'{date_str}_iqtree_logs')
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(cache_dir, exist_ok=True)
     os.makedirs(trees_dir, exist_ok=True)
+    os.makedirs(iqtree_log_dir, exist_ok=True)
+    log.info(f"IQ-TREE logs will be saved to: {iqtree_log_dir}")
 
     models = SEED_MODELS if dataset == 'seed' else FULL_MODELS
 
@@ -666,7 +697,8 @@ def process_all(dataset='seed', rna_filter=None, family_mode='all-significant'):
         log.info(f"[{i+1}/{len(families)}] {rfam_id}")
 
         results, skip_reason = process_family_allsig(
-            rfam_id, models, dir_au, cache_dir, ncbi, trees_dir
+            rfam_id, models, dir_au, cache_dir, ncbi, trees_dir,
+            iqtree_log_dir, dataset=dataset
         )
 
         if results:
