@@ -20,8 +20,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # ── Config ──────────────────────────────────────────────────────────────────
-INPUT_CSV = "/Users/u7875558/RNAPhylo/seedAlignment_AllModels/outputs/260306_allsig53_species_tree_comparison/nRF_comparison.csv"
-OUTPUT_DIR = "/Users/u7875558/RNAPhylo/seedAlignment_AllModels/outputs/260306_allsig53_species_tree_comparison/figures"
+INPUT_CSV = "/Users/u7875558/RNAPhylo/seedAlignment_AllModels/outputs/260306_allsig_species_tree_comparison/nRF_comparison.csv"
+OUTPUT_DIR = "/Users/u7875558/RNAPhylo/seedAlignment_AllModels/outputs/260306_allsig_species_tree_comparison/figures"
 
 MODEL_ORDER = ['S16', 'S16A', 'S16B',
                'S7A', 'S7B', 'S7C', 'S7D', 'S7E', 'S7F',
@@ -197,8 +197,10 @@ def fig_scatter_vs_species(df):
     _scatter_grid(
         valid,
         x_col='nRF_dna_vs_sp', y_col='nRF_rna_vs_sp',
-        x_label='nRF (DNA vs Species)', y_label='nRF (RNA vs Species)',
-        suptitle=f'Distance to Species Tree — per RNA Model ({n_fam} families with ≥4 unique species)',
+        x_label='nRF (DNA vs NCBI Taxonomy)',
+        y_label='nRF (RNA vs NCBI Taxonomy)',
+        suptitle=f'Normalised Robinson-Foulds Distance to NCBI Taxonomy Tree '
+                 f'— per RNA Model ({n_fam} families with ≥4 unique species)',
         save_name='fig4_scatter_vs_species',
     )
 
@@ -215,9 +217,47 @@ def fig_scatter_ic_vs_species(df):
     _scatter_grid(
         valid,
         x_col='nIC_dna_vs_sp', y_col='nIC_rna_vs_sp',
-        x_label='nIC (DNA vs Species)', y_label='nIC (RNA vs Species)',
-        suptitle=f'Incompatible Splits vs Species Tree — per RNA Model ({n_fam} families)',
+        x_label='nIC (DNA vs NCBI Taxonomy)',
+        y_label='nIC (RNA vs NCBI Taxonomy)',
+        suptitle=f'Incompatible Splits vs NCBI Taxonomy Tree '
+                 f'— per RNA Model ({n_fam} families)',
         save_name='fig5_scatter_nIC_vs_species',
+    )
+
+
+# ── Figure 6: Scatter nIC(DNA vs Sp) vs nIC(Rfam vs Sp) per model ────────
+def fig_scatter_ic_dna_vs_rfam_sp(df):
+    """Per-model scatter: is DNA or Rfam tree closer to species tree (nIC)?"""
+    if 'nIC_dna_vs_sp' not in df.columns or 'nIC_rfam_vs_sp' not in df.columns:
+        return
+    valid = df.dropna(subset=['nIC_dna_vs_sp', 'nIC_rfam_vs_sp'])
+    if valid.empty:
+        return
+    n_fam = valid['RNA_family'].nunique()
+    _scatter_grid(
+        valid,
+        x_col='nIC_rfam_vs_sp', y_col='nIC_dna_vs_sp',
+        x_label='nIC (Rfam vs Species)', y_label='nIC (DNA vs Species)',
+        suptitle=f'Incompatible Splits vs Species Tree: DNA vs Rfam ({n_fam} families)',
+        save_name='fig6_scatter_nIC_dna_vs_rfam_sp',
+    )
+
+
+# ── Figure 7: Scatter nIC(RNA vs Sp) vs nIC(Rfam vs Sp) per model ────────
+def fig_scatter_ic_rna_vs_rfam_sp(df):
+    """Per-model scatter: is RNA or Rfam tree closer to species tree (nIC)?"""
+    if 'nIC_rna_vs_sp' not in df.columns or 'nIC_rfam_vs_sp' not in df.columns:
+        return
+    valid = df.dropna(subset=['nIC_rna_vs_sp', 'nIC_rfam_vs_sp'])
+    if valid.empty:
+        return
+    n_fam = valid['RNA_family'].nunique()
+    _scatter_grid(
+        valid,
+        x_col='nIC_rfam_vs_sp', y_col='nIC_rna_vs_sp',
+        x_label='nIC (Rfam vs Species)', y_label='nIC (RNA vs Species)',
+        suptitle=f'Incompatible Splits vs Species Tree: RNA vs Rfam ({n_fam} families)',
+        save_name='fig7_scatter_nIC_rna_vs_rfam_sp',
     )
 
 
@@ -234,11 +274,9 @@ def main():
     df = load_data()
     print(f"Loaded {len(df)} rows, {df.RNA_family.nunique()} families\n")
 
-    fig_direct_boxplot(df)
-    fig_per_model_rfam_bars(df)
-    fig_scatter_vs_rfam(df)
-    fig_scatter_vs_species(df)
-    fig_scatter_ic_vs_species(df)
+    # nRF and nIC vs taxonomy tree (per model scatter plots)
+    fig_scatter_vs_species(df)       # nRF (from --normalize-dist)
+    fig_scatter_ic_vs_species(df)    # nIC
 
     print(f"\nAll figures saved to: {OUTPUT_DIR}")
 
