@@ -27,6 +27,8 @@ MODEL_ORDER = ['S16', 'S16A', 'S16B',
                'S7A', 'S7B', 'S7C', 'S7D', 'S7E', 'S7F',
                'S6A', 'S6B', 'S6C', 'S6D', 'S6E']
 
+RESOLUTION_THRESHOLD = 0.5
+
 
 def load_data():
     return pd.read_csv(INPUT_CSV)
