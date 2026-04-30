@@ -14,6 +14,7 @@ Usage:
 """
 
 import os
+from datetime import datetime
 from os.path import join
 import pandas as pd
 import numpy as np
@@ -28,6 +29,8 @@ MODEL_ORDER = ['S16', 'S16A', 'S16B',
                'S6A', 'S6B', 'S6C', 'S6D', 'S6E']
 
 RESOLUTION_THRESHOLD = 0.5
+DATASET_TAG = "SEED"
+DATE_TAG = datetime.now().strftime("%y%m%d")
 
 
 def load_data():
@@ -190,77 +193,104 @@ def fig_scatter_vs_rfam(df):
     )
 
 
-# ── Figure 4: Scatter nRF(RNA vs Sp) vs nRF(DNA vs Sp) per model ─────────
+# ── Figure 4: Scatter nRF(RNA vs NCBI) vs nRF(DNA vs NCBI), coloured by NCBI resolution ──
 def fig_scatter_vs_species(df):
-    valid = df.dropna(subset=['nRF_dna_vs_sp', 'nRF_rna_vs_sp'])
+    """Scatter grid coloured by NCBI tree resolution.
+
+    Filled circles: families where NCBI taxonomy resolves >= RESOLUTION_THRESHOLD
+                    of internal branches (informative reference).
+    Open circles:    families where NCBI is largely a polytomy (caveat applies).
+    """
+    valid = df.dropna(subset=['nRF_dna_vs_sp', 'nRF_rna_vs_sp']).copy()
     if valid.empty:
         return
     n_fam = valid['RNA_family'].nunique()
-    _scatter_grid(
-        valid,
-        x_col='nRF_dna_vs_sp', y_col='nRF_rna_vs_sp',
-        x_label='nRF (DNA vs NCBI Taxonomy)',
-        y_label='nRF (RNA vs NCBI Taxonomy)',
-        suptitle=f'Normalised Robinson-Foulds Distance to NCBI Taxonomy Tree '
-                 f'— per RNA Model ({n_fam} families with ≥4 unique species)',
-        save_name='fig4_scatter_vs_species',
-    )
+    fam_res = valid.groupby('RNA_family')['ncbi_resolution'].first()
+    n_well = int((fam_res >= RESOLUTION_THRESHOLD).sum())
+    n_poor = int((fam_res < RESOLUTION_THRESHOLD).sum())
+
+    fig, axes = plt.subplots(3, MAX_COLS, figsize=(4 * MAX_COLS, 4.5 * 3),
+                             squeeze=False)
+
+    for row_idx, row_models in enumerate(MODEL_ROWS):
+        for col_idx in range(MAX_COLS):
+            ax = axes[row_idx][col_idx]
+            if col_idx >= len(row_models):
+                ax.set_visible(False)
+                continue
+
+            model = row_models[col_idx]
+            if model not in valid['model'].unique():
+                ax.set_visible(False)
+                continue
+
+            sub = valid[valid['model'] == model]
+            well = sub[sub['ncbi_resolution'] >= RESOLUTION_THRESHOLD]
+            poor = sub[sub['ncbi_resolution'] < RESOLUTION_THRESHOLD]
+
+            ax.scatter(well['nRF_dna_vs_sp'], well['nRF_rna_vs_sp'],
+                       s=24, alpha=0.7, c='steelblue', edgecolor='steelblue',
+                       linewidth=0.6, zorder=3,
+                       label=f'≥{int(RESOLUTION_THRESHOLD*100)}% (n={len(well)})')
+            ax.scatter(poor['nRF_dna_vs_sp'], poor['nRF_rna_vs_sp'],
+                       s=24, alpha=0.7, facecolor='none', edgecolor='gray',
+                       linewidth=0.8, zorder=2,
+                       label=f'<{int(RESOLUTION_THRESHOLD*100)}% (n={len(poor)})')
+
+            lim = 1.08
+            ax.plot([0, lim], [0, lim], 'k--', lw=0.8, alpha=0.4, zorder=1)
+            ax.fill_between([0, lim], [0, lim], [lim, lim], alpha=0.03,
+                            color='red', zorder=0)
+            ax.fill_between([0, lim], [0, 0], [0, lim], alpha=0.03,
+                            color='green', zorder=0)
+
+            n_below = int((well['nRF_rna_vs_sp'] < well['nRF_dna_vs_sp']).sum())
+            n_above = int((well['nRF_rna_vs_sp'] > well['nRF_dna_vs_sp']).sum())
+            n_eq = int((well['nRF_rna_vs_sp'] == well['nRF_dna_vs_sp']).sum())
+
+            ax.set_title(f'{model}  (R:{n_below} D:{n_above} T:{n_eq})',
+                         fontsize=10)
+            ax.set_xlabel('nRF (DNA vs NCBI Taxonomy)', fontsize=8)
+            ax.set_ylabel('nRF (RNA vs NCBI Taxonomy)', fontsize=8)
+            ax.set_xlim(-0.02, lim)
+            ax.set_ylim(-0.02, lim)
+            ax.set_aspect('equal')
+            if row_idx == 0 and col_idx == 0:
+                ax.legend(loc='lower right', fontsize=7, framealpha=0.9,
+                          title='NCBI resolution', title_fontsize=7)
+
+    fig.suptitle((f'Normalised Robinson-Foulds Distance to NCBI Taxonomy Tree '
+                  f'— per RNA Model ({n_fam} families: '
+                  f'{n_well} ≥{int(RESOLUTION_THRESHOLD*100)}%, '
+                  f'{n_poor} <{int(RESOLUTION_THRESHOLD*100)}% NCBI resolution)'),
+                 fontsize=13, y=0.995)
+    plt.tight_layout(rect=[0, 0, 1, 0.97])
+    _save(fig, f'{DATE_TAG}_nRF_Taxonomy_{DATASET_TAG}')
 
 
-# ── Figure 5: Scatter nIC(RNA vs Sp) vs nIC(DNA vs Sp) per model ─────────
-def fig_scatter_ic_vs_species(df):
-    """Per-model scatter: nIC of RNA vs species tree vs nIC of DNA vs species tree."""
-    if 'nIC_dna_vs_sp' not in df.columns:
-        return
-    valid = df.dropna(subset=['nIC_dna_vs_sp', 'nIC_rna_vs_sp'])
-    if valid.empty:
-        return
-    n_fam = valid['RNA_family'].nunique()
-    _scatter_grid(
-        valid,
-        x_col='nIC_dna_vs_sp', y_col='nIC_rna_vs_sp',
-        x_label='nIC (DNA vs NCBI Taxonomy)',
-        y_label='nIC (RNA vs NCBI Taxonomy)',
-        suptitle=f'Incompatible Splits vs NCBI Taxonomy Tree '
-                 f'— per RNA Model ({n_fam} families)',
-        save_name='fig5_scatter_nIC_vs_species',
-    )
-
-
-# ── Figure 6: Scatter nIC(DNA vs Sp) vs nIC(Rfam vs Sp) per model ────────
-def fig_scatter_ic_dna_vs_rfam_sp(df):
-    """Per-model scatter: is DNA or Rfam tree closer to species tree (nIC)?"""
-    if 'nIC_dna_vs_sp' not in df.columns or 'nIC_rfam_vs_sp' not in df.columns:
-        return
-    valid = df.dropna(subset=['nIC_dna_vs_sp', 'nIC_rfam_vs_sp'])
-    if valid.empty:
-        return
-    n_fam = valid['RNA_family'].nunique()
-    _scatter_grid(
-        valid,
-        x_col='nIC_rfam_vs_sp', y_col='nIC_dna_vs_sp',
-        x_label='nIC (Rfam vs Species)', y_label='nIC (DNA vs Species)',
-        suptitle=f'Incompatible Splits vs Species Tree: DNA vs Rfam ({n_fam} families)',
-        save_name='fig6_scatter_nIC_dna_vs_rfam_sp',
-    )
-
-
-# ── Figure 7: Scatter nIC(RNA vs Sp) vs nIC(Rfam vs Sp) per model ────────
-def fig_scatter_ic_rna_vs_rfam_sp(df):
-    """Per-model scatter: is RNA or Rfam tree closer to species tree (nIC)?"""
-    if 'nIC_rna_vs_sp' not in df.columns or 'nIC_rfam_vs_sp' not in df.columns:
-        return
-    valid = df.dropna(subset=['nIC_rna_vs_sp', 'nIC_rfam_vs_sp'])
-    if valid.empty:
-        return
-    n_fam = valid['RNA_family'].nunique()
-    _scatter_grid(
-        valid,
-        x_col='nIC_rfam_vs_sp', y_col='nIC_rna_vs_sp',
-        x_label='nIC (Rfam vs Species)', y_label='nIC (RNA vs Species)',
-        suptitle=f'Incompatible Splits vs Species Tree: RNA vs Rfam ({n_fam} families)',
-        save_name='fig7_scatter_nIC_rna_vs_rfam_sp',
-    )
+def print_stratified_summary(df):
+    valid = df.dropna(subset=['nRF_dna_vs_sp', 'nRF_rna_vs_sp']).copy()
+    print("\n=== Stratified summary by NCBI resolution (seed) ===")
+    for label, mask in [
+        ('All', valid['ncbi_resolution'].notna()),
+        (f'NCBI resolution ≥ {int(RESOLUTION_THRESHOLD*100)}%',
+         valid['ncbi_resolution'] >= RESOLUTION_THRESHOLD),
+        (f'NCBI resolution < {int(RESOLUTION_THRESHOLD*100)}%',
+         valid['ncbi_resolution'] < RESOLUTION_THRESHOLD),
+    ]:
+        sub = valid[mask]
+        n_fam = sub['RNA_family'].nunique()
+        print(f"\n  {label} ({n_fam} families):")
+        print(f"    {'Model':<6} {'mean DNA':>9} {'mean RNA':>9} {'R':>4} {'D':>4} {'T':>4}")
+        for m in MODEL_ORDER:
+            ms = sub[sub['model'] == m]
+            if ms.empty:
+                continue
+            r = int((ms['nRF_rna_vs_sp'] < ms['nRF_dna_vs_sp']).sum())
+            d = int((ms['nRF_rna_vs_sp'] > ms['nRF_dna_vs_sp']).sum())
+            t = int((ms['nRF_rna_vs_sp'] == ms['nRF_dna_vs_sp']).sum())
+            print(f"    {m:<6} {ms['nRF_dna_vs_sp'].mean():>9.4f} "
+                  f"{ms['nRF_rna_vs_sp'].mean():>9.4f} {r:>4} {d:>4} {t:>4}")
 
 
 def _save(fig, name):
@@ -276,9 +306,8 @@ def main():
     df = load_data()
     print(f"Loaded {len(df)} rows, {df.RNA_family.nunique()} families\n")
 
-    # nRF and nIC vs taxonomy tree (per model scatter plots)
-    fig_scatter_vs_species(df)       # nRF (from --normalize-dist)
-    fig_scatter_ic_vs_species(df)    # nIC
+    fig_scatter_vs_species(df)       # nRF vs NCBI (coloured by resolution)
+    print_stratified_summary(df)
 
     print(f"\nAll figures saved to: {OUTPUT_DIR}")
 
