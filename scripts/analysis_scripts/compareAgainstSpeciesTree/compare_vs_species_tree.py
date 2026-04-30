@@ -70,6 +70,9 @@ ALPHA = 0.05
 RFAM_API_DELAY = 0.5  # seconds between Rfam API calls
 IQTREE_PATH = "/Users/u7875558/tools/build-iqtree3/iqtree3"
 
+# Stockholm alignment directory for full dataset (accession -> species mapping)
+FULL_STO_DIR = "/Users/u7875558/RNAPhylo/fullAlignment/inputs/sto"
+
 # RNA type classification (reused from plot_nRF_by_RNAtypes.py)
 RFAM_FAMILY_TXT = "/Users/u7875558/RNAPhylo/seedAlignment_AllModels/inputs/family.txt"
 
@@ -263,45 +266,178 @@ def fetch_rfam_tree_taxid_mapping(rfam_id, cache_dir):
     return mapping
 
 
+def parse_sto_taxid_mapping(rfam_id, ncbi, cache_dir):
+    """
+    Parse a Stockholm (.sto) file to build {accession: taxon_id} mapping.
+
+    Extracts species names from #=GS ... DE lines, then resolves them
+    to NCBI taxon IDs via NCBITaxa. Caches result as JSON.
+
+    Returns: dict {accession_with_coords: taxon_id}
+    """
+    cache_file = join(cache_dir, f"{rfam_id}_sto_taxid_map.json")
+    if isfile(cache_file):
+        with open(cache_file) as f:
+            return {k: int(v) for k, v in json.load(f).items()}
+
+    sto_path = join(FULL_STO_DIR, f"{rfam_id}.sto")
+    if not isfile(sto_path):
+        log.warning(f"    No .sto file found: {sto_path}")
+        return {}
+
+    # Parse #=GS lines: accession -> species name candidates
+    # Store two candidates per accession:
+    #   1. Two-word binomial (genus + species) — works for most organisms
+    #   2. Full name up to first comma — handles virus names like
+    #      "SARS coronavirus WH20, complete genome"
+    acc_to_binomial = {}   # accession -> "Genus species"
+    acc_to_fullname = {}   # accession -> "Full name before comma"
+    with open(sto_path) as f:
+        for line in f:
+            if not line.startswith('#=GS'):
+                continue
+            parts = line.split()
+            if len(parts) < 4 or parts[2] != 'DE':
+                continue
+            acc = parts[1]  # e.g. NW_019154086.1/20749348-20749777
+            desc = ' '.join(parts[3:])
+            words = desc.split()
+            if len(words) >= 2:
+                acc_to_binomial[acc] = f"{words[0]} {words[1]}"
+            # Full name: everything before the first comma, then strip
+            # isolate/strain/cultivar suffixes that are not part of the taxon
+            full_name = desc.split(',')[0].strip()
+            full_name = re.split(
+                r'\s+(?:isolate|strain|cultivar|chromosome|scaffold|'
+                r'unplaced|contig|linkage|genomic|complete|DNA)\b',
+                full_name
+            )[0].strip()
+            if full_name:
+                acc_to_fullname[acc] = full_name
+
+    # Resolve: try two-word binomial first, then fall back to full name
+    all_binomials = list(set(acc_to_binomial.values()))
+    all_fullnames = list(set(acc_to_fullname.values()))
+
+    species_to_taxid = {}
+    # Step 1: resolve binomial names
+    for sp in all_binomials:
+        result = ncbi.get_name_translator([sp])
+        if sp in result and result[sp]:
+            species_to_taxid[sp] = result[sp][0]
+
+    # Step 2: for full names whose binomial didn't resolve, try the full name
+    unresolved_fullnames = set()
+    for acc in acc_to_fullname:
+        binomial = acc_to_binomial.get(acc)
+        if binomial and binomial in species_to_taxid:
+            continue  # already resolved via binomial
+        unresolved_fullnames.add(acc_to_fullname[acc])
+
+    for fn in unresolved_fullnames:
+        result = ncbi.get_name_translator([fn])
+        if fn in result and result[fn]:
+            species_to_taxid[fn] = result[fn][0]
+            log.info(f"    Resolved via full name: '{fn}' -> taxid {result[fn][0]}")
+
+    # Build accession -> taxid mapping (prefer binomial, fall back to full name)
+    mapping = {}
+    for acc in acc_to_fullname:
+        binomial = acc_to_binomial.get(acc)
+        fullname = acc_to_fullname[acc]
+        if binomial and binomial in species_to_taxid:
+            mapping[acc] = species_to_taxid[binomial]
+        elif fullname in species_to_taxid:
+            mapping[acc] = species_to_taxid[fullname]
+
+    # Cache
+    os.makedirs(cache_dir, exist_ok=True)
+    with open(cache_file, 'w') as f:
+        json.dump({k: v for k, v in mapping.items()}, f)
+
+    log.info(f"    Parsed .sto: {len(mapping)}/{len(acc_to_fullname)} accessions resolved to taxids")
+    return mapping
+
+
+URS_LABEL_PATTERN = re.compile(r'^_?URS[0-9A-Z]+_(\d+)/\d+-\d+', re.IGNORECASE)
+
+
+def _resolve_one_label(label, combined_map):
+    """Try to resolve a single GenBank-style label against a name->taxid map.
+    Returns taxid or None."""
+    label_clean = label.replace(' ', '_')
+    # Direct lookup
+    if label_clean in combined_map:
+        return combined_map[label_clean]
+    # Try with leading underscore stripped
+    if label_clean.lstrip('_') in combined_map:
+        return combined_map[label_clean.lstrip('_')]
+    # Extract accession/coords portion
+    match = re.search(r'([A-Za-z0-9_.]+/\d+-\d+)', label_clean)
+    if match:
+        acc = match.group(1).lstrip('_')
+        if acc in combined_map:
+            return combined_map[acc]
+    # Partial match by accession prefix (no coordinates)
+    base = label_clean.split('/')[0].lstrip('_')
+    for map_acc, taxid in combined_map.items():
+        if base and base in map_acc:
+            return taxid
+    return None
+
+
 def resolve_leaf_taxids(tree, rfam_id, cache_dir, ncbi):
     """
-    Master function: detect label format and resolve all leaf labels to taxon IDs.
+    Resolve each leaf to a taxon ID, detecting label format per leaf.
 
-    Returns: dict {leaf_label: taxon_id}
+    Each leaf is tried independently:
+      1. URS format (taxid embedded in label) — regex extraction
+      2. GenBank format — lookup in combined Rfam API + .sto mapping
+
+    This handles trees that mix both label formats (common in seed data).
+
+    Returns: (dict {leaf_label: taxon_id}, label_format_str)
+        label_format_str describes the dominant format: "URS", "GenBank", or "Mixed"
     """
     leaf_labels = [leaf.taxon.label for leaf in tree.leaf_node_iter()
                    if leaf.taxon is not None]
+    if not leaf_labels:
+        return {}, "Empty"
 
-    # Try URS format first
-    urs_map = extract_taxids_from_urs_labels(leaf_labels)
-    if len(urs_map) >= len(leaf_labels) * 0.5:
-        # Mostly URS format
+    # Lazy-load the GenBank-style mapping (only fetch if any leaf needs it)
+    combined_map = None
+
+    result = {}
+    n_urs = 0
+    n_genbank = 0
+
+    for label in leaf_labels:
+        label_clean = label.replace(' ', '_')
+
+        # 1. Try URS format on this label
+        m = URS_LABEL_PATTERN.search(label_clean)
+        if m:
+            result[label] = int(m.group(1))
+            n_urs += 1
+            continue
+
+        # 2. Fall back to GenBank lookup (load mapping on first need)
+        if combined_map is None:
+            rfam_map = fetch_rfam_tree_taxid_mapping(rfam_id, cache_dir)
+            sto_map = parse_sto_taxid_mapping(rfam_id, ncbi, cache_dir)
+            combined_map = {**sto_map, **rfam_map}
+
+        taxid = _resolve_one_label(label, combined_map)
+        if taxid is not None:
+            result[label] = taxid
+            n_genbank += 1
+
+    if n_urs > 0 and n_genbank > 0:
+        label_format = "Mixed"
+    elif n_urs > 0:
         label_format = "URS"
-        result = urs_map
     else:
-        # GenBank format — need Rfam API lookup
         label_format = "GenBank"
-        rfam_map = fetch_rfam_tree_taxid_mapping(rfam_id, cache_dir)
-
-        result = {}
-        for label in leaf_labels:
-            label_clean = label.replace(' ', '_')
-            # Try direct lookup
-            if label_clean in rfam_map:
-                result[label] = rfam_map[label_clean]
-                continue
-            # Try extracting accession part
-            match = re.search(r'([A-Za-z0-9_.]+/\d+-\d+)', label_clean)
-            if match:
-                acc = match.group(1)
-                if acc in rfam_map:
-                    result[label] = rfam_map[acc]
-                    continue
-            # Try matching without coordinates
-            for rfam_acc, taxid in rfam_map.items():
-                if label_clean.split('/')[0] in rfam_acc:
-                    result[label] = taxid
-                    break
 
     return result, label_format
 
@@ -434,73 +570,111 @@ def get_ncbi_species_tree(taxon_ids, ncbi):
 # DISTANCE COMPUTATION
 # =============================================================================
 
-def compute_rf_iqtree(species_tree, inferred_tree):
+def compute_rf_iqtree(tree1, tree2, normalize=False,
+                      tree1_path=None, tree2_path=None, prefix=None):
     """
-    Compute RF distance using IQ-TREE -rf (consistent with rf_distance_calculator.py).
+    Compute RF distance using IQ-TREE -rf.
 
     Both trees are derooted (trifurcation at root) so IQ-TREE treats them
     as unrooted. Falls back to dendropy for tiny trees where IQ-TREE fails.
 
-    Returns: RF distance (int) or None on failure.
+    Args:
+        normalize: if True, use --normalize-dist to get nRF directly.
+        tree1_path: path to save the first tree Newick file.
+        tree2_path: path to save the second tree Newick file.
+        prefix: IQ-TREE -pre prefix for output files (.rfdist, .log).
+                If tree1_path/tree2_path/prefix are None, uses temp files.
+
+    Returns: RF distance (float) or None on failure.
+             If normalize=True, returns nRF (0-1).
     """
     from dendropy.calculate import treecompare
 
     # Deroot both trees so IQ-TREE treats them as unrooted
-    sp_copy = species_tree.clone(depth=2)
-    inf_copy = inferred_tree.clone(depth=2)
-    for t in [sp_copy, inf_copy]:
+    t1 = tree1.clone(depth=2)
+    t2 = tree2.clone(depth=2)
+    for t in [t1, t2]:
         if t.is_rooted or len(t.seed_node.child_nodes()) == 2:
             t.deroot()
-        # Clear root edge length/label — IQ-TREE treats root branch length
-        # as evidence of a rooted tree
+        # Remove single-child internal nodes that can arise from derooting
+        # polytomous trees (e.g., species trees). IQ-TREE rejects these.
+        t.suppress_unifurcations()
         t.seed_node.edge.length = None
         if t.seed_node.taxon:
             t.seed_node.taxon = None
 
-    sp_newick = sp_copy.as_string(schema="newick")
-    inf_newick = inf_copy.as_string(schema="newick")
+    nwk1 = t1.as_string(schema="newick")
+    nwk2 = t2.as_string(schema="newick")
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tree1_path = join(tmpdir, "species.tree")
-        tree2_path = join(tmpdir, "inferred.tree")
+    # Use provided paths or temp files
+    use_tmp = (tree1_path is None)
+    if use_tmp:
+        tmpdir = tempfile.mkdtemp()
+        tree1_path = join(tmpdir, "tree1.nwk")
+        tree2_path = join(tmpdir, "tree2.nwk")
         prefix = join(tmpdir, "rf_out")
 
-        with open(tree1_path, 'w') as f:
-            f.write(sp_newick)
-        with open(tree2_path, 'w') as f:
-            f.write(inf_newick)
+    os.makedirs(os.path.dirname(tree1_path), exist_ok=True)
 
-        cmd = f"{IQTREE_PATH} -rf {tree1_path} {tree2_path} -pre {prefix}"
-        try:
-            result = subprocess.run(
-                cmd, shell=True, capture_output=True, text=True, timeout=300
-            )
-        except subprocess.TimeoutExpired:
-            log.warning("    IQ-TREE RF computation timed out")
+    with open(tree1_path, 'w') as f:
+        f.write(nwk1)
+    with open(tree2_path, 'w') as f:
+        f.write(nwk2)
 
-        rfdist_file = prefix + ".rfdist"
-        if isfile(rfdist_file):
-            with open(rfdist_file) as f:
-                lines = f.readlines()
-            for line in lines[1:]:
-                parts = line.strip().split()
-                if len(parts) >= 2:
-                    values = [float(x) for x in parts[1:]]
-                    rf_val = max(values)
-                    return int(rf_val)
+    cmd = f"{IQTREE_PATH} -rf {tree1_path} {tree2_path} -pre {prefix}"
+    if normalize:
+        cmd += " --normalize-dist"
+
+    try:
+        subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=300)
+    except subprocess.TimeoutExpired:
+        log.warning("    IQ-TREE RF computation timed out")
+        return None
+
+    # Check IQ-TREE log for errors
+    log_file = prefix + ".log"
+    if isfile(log_file):
+        with open(log_file) as f:
+            log_content = f.read()
+        if 'ERROR' in log_content:
+            error_lines = [l for l in log_content.split('\n') if 'ERROR' in l]
+            log.warning(f"    IQ-TREE error: {'; '.join(error_lines)}")
+            return None
+
+    # Parse .rfdist file
+    rfdist_file = prefix + ".rfdist"
+    rf_val = None
+    if isfile(rfdist_file):
+        with open(rfdist_file) as f:
+            lines = f.readlines()
+        for line in lines[1:]:
+            parts = line.strip().split()
+            if len(parts) >= 2:
+                rf_val = float(parts[-1])
+                break
+
+    if rf_val is not None:
+        return rf_val
 
     # Fallback: dendropy symmetric_difference for tiny trees
     log.debug("    IQ-TREE RF failed, falling back to dendropy")
     try:
-        # Re-parse into shared TaxonNamespace (required by dendropy)
         shared_tns = dendropy.TaxonNamespace()
-        sp_fb = dendropy.Tree.get(data=sp_newick, schema="newick",
+        t1_fb = dendropy.Tree.get(data=nwk1, schema="newick",
                                   taxon_namespace=shared_tns)
-        inf_fb = dendropy.Tree.get(data=inf_newick, schema="newick",
-                                   taxon_namespace=shared_tns)
-        sp_fb.encode_bipartitions()
-        inf_fb.encode_bipartitions()
-        return treecompare.symmetric_difference(sp_fb, inf_fb)
+        t2_fb = dendropy.Tree.get(data=nwk2, schema="newick",
+                                  taxon_namespace=shared_tns)
+        t1_fb.encode_bipartitions()
+        t2_fb.encode_bipartitions()
+        rf = treecompare.symmetric_difference(t1_fb, t2_fb)
+        if normalize:
+            n_int_1 = len([n for n in t1_fb.internal_nodes()
+                          if n.parent_node is not None])
+            n_int_2 = len([n for n in t2_fb.internal_nodes()
+                          if n.parent_node is not None])
+            max_dist = n_int_1 + n_int_2
+            return rf / max_dist if max_dist > 0 else 0.0
+        return float(rf)
     except Exception as e:
         log.warning(f"    dendropy RF fallback also failed: {e}")
         return None
