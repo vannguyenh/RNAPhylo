@@ -14,11 +14,22 @@ Usage:
 """
 
 import os
+import sys
 from datetime import datetime
 from os.path import join
+from pathlib import Path
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+
+# Shared manuscript-wide plot style
+sys.path.insert(0, str(next(
+    p for p in Path(__file__).resolve().parents if p.name == "scripts"
+)))
+from plot_style import (
+    apply_style, COLORS, FIG_DOUBLE, diagonal_scatter, save_figure,
+)
+apply_style()
 
 # ── Config ──────────────────────────────────────────────────────────────────
 INPUT_CSV = "/Users/u7875558/RNAPhylo/seedAlignment_AllModels/outputs/260306_allsig_species_tree_comparison/nRF_comparison.csv"
@@ -43,11 +54,13 @@ def fig_direct_boxplot(df):
     models = [m for m in MODEL_ORDER if m in df['model'].unique()]
     n_fam = df['RNA_family'].nunique()
 
-    fig, axes = plt.subplots(1, 3, figsize=(15, 5), sharey=True)
+    fig, axes = plt.subplots(1, 3, figsize=(FIG_DOUBLE, 2.6), sharey=True)
+    # Colour each panel by the "non-DNA" tree being compared: RNA-vs-DNA
+    # uses the RNA colour, DNA-vs-Rfam uses DNA, RNA-vs-Rfam uses Rfam.
     comparisons = [
-        ('nRF_rna_vs_dna', 'RNA vs DNA', '#CE93D8'),
-        ('nRF_dna_vs_rfam', 'DNA vs Rfam', '#90CAF9'),
-        ('nRF_rna_vs_rfam', 'RNA vs Rfam', '#A5D6A7'),
+        ('nRF_rna_vs_dna',  'RNA vs DNA',  COLORS['RNA']),
+        ('nRF_dna_vs_rfam', 'DNA vs Rfam', COLORS['DNA']),
+        ('nRF_rna_vs_rfam', 'RNA vs Rfam', COLORS['Rfam']),
     ]
 
     for ax, (col, title, color) in zip(axes, comparisons):
@@ -59,18 +72,21 @@ def fig_direct_boxplot(df):
         )
         for patch in bp['boxes']:
             patch.set_facecolor(color)
-            patch.set_edgecolor('black')
+            patch.set_alpha(0.55)
+            patch.set_edgecolor(color)
         for median in bp['medians']:
             median.set_color('black')
-            median.set_linewidth(1.5)
+            median.set_linewidth(1.2)
 
-        ax.set_title(title, fontsize=11)
+        ax.set_title(title)
         ax.set_ylim(-0.02, 1.05)
         ax.tick_params(axis='x', rotation=45)
+        for side in ('top', 'right'):
+            ax.spines[side].set_visible(False)
 
-    axes[0].set_ylabel('nRF', fontsize=11)
-    fig.suptitle(f'Direct Tree-to-Tree Distances per Model\n'
-                 f'({n_fam} families, Seed)', fontsize=13)
+    axes[0].set_ylabel('nRF')
+    fig.suptitle(f'Direct tree-to-tree distances per model '
+                 f'({n_fam} families, seed)')
     plt.tight_layout()
     _save(fig, 'fig1_direct_boxplot')
 
@@ -90,31 +106,33 @@ def fig_per_model_rfam_bars(df):
     x = np.arange(len(models))
     width = 0.6
 
-    fig, ax = plt.subplots(figsize=(10, 4.5))
+    fig, ax = plt.subplots(figsize=(FIG_DOUBLE, 3.0))
     ax.bar(x, rna_closer, width, label='RNA tree closer to Rfam',
-           color='#4CAF50', edgecolor='white', linewidth=0.5)
+           color=COLORS['RNA'], edgecolor='white', linewidth=0.5)
     ax.bar(x, ties, width, bottom=rna_closer, label='Tie',
-           color='#BDBDBD', edgecolor='white', linewidth=0.5)
+           color=COLORS['tie'], edgecolor='white', linewidth=0.5)
     ax.bar(x, dna_closer, width,
            bottom=[r + t for r, t in zip(rna_closer, ties)],
            label='DNA tree closer to Rfam',
-           color='#F44336', edgecolor='white', linewidth=0.5)
+           color=COLORS['DNA'], edgecolor='white', linewidth=0.5)
 
     ax.set_xticks(x)
-    ax.set_xticklabels(models, rotation=45, ha='right', fontsize=9)
-    ax.set_ylabel('Number of RNA families', fontsize=11)
-    ax.set_title('Which Inferred Tree Is Closer to the Rfam Tree?\n'
-                 '(per RNA substitution model, 53 families)', fontsize=12)
-    ax.legend(loc='upper right', fontsize=9)
+    ax.set_xticklabels(models, rotation=45, ha='right')
+    ax.set_ylabel('Number of RNA families')
+    ax.set_title('Which inferred tree is closer to the Rfam tree? '
+                 '(per RNA substitution model, 53 families)')
+    ax.legend(loc='upper right')
+    for side in ('top', 'right'):
+        ax.spines[side].set_visible(False)
 
     for i, (rc, dc) in enumerate(zip(rna_closer, dna_closer)):
         if rc > 0:
-            ax.text(i, rc / 2, str(rc), ha='center', va='center', fontsize=8,
+            ax.text(i, rc / 2, str(rc), ha='center', va='center',
                     fontweight='bold', color='white')
         if dc > 0:
             total = rna_closer[i] + ties[i]
             ax.text(i, total + dc / 2, str(dc), ha='center', va='center',
-                    fontsize=8, fontweight='bold', color='white')
+                    fontweight='bold', color='white')
 
     plt.tight_layout()
     _save(fig, 'fig2_per_model_vs_rfam')
@@ -132,10 +150,15 @@ MODEL_ROWS = [
 MAX_COLS = 6  # widest row
 
 
+PANEL_SIZE = 1.9  # inches per scatter panel (square; nRF is on a 0–1 scale)
+
+
 def _scatter_grid(df, x_col, y_col, x_label, y_label, suptitle, save_name):
     """Shared scatter grid: 3 rows grouped by model family."""
-    fig, axes = plt.subplots(3, MAX_COLS, figsize=(4 * MAX_COLS, 4.5 * 3),
-                             squeeze=False)
+    fig_w = MAX_COLS * PANEL_SIZE
+    fig_h = len(MODEL_ROWS) * PANEL_SIZE + 0.8  # extra room for suptitle
+    fig, axes = plt.subplots(len(MODEL_ROWS), MAX_COLS,
+                             figsize=(fig_w, fig_h), squeeze=False)
 
     for row_idx, row_models in enumerate(MODEL_ROWS):
         for col_idx in range(MAX_COLS):
@@ -152,32 +175,24 @@ def _scatter_grid(df, x_col, y_col, x_label, y_label, suptitle, save_name):
             sub = df[df['model'] == model].dropna(subset=[x_col, y_col])
 
             ax.scatter(sub[x_col], sub[y_col],
-                       s=20, alpha=0.5, color='steelblue', edgecolor='white',
-                       linewidth=0.3, zorder=3)
+                       s=14, alpha=0.65, color=COLORS['RNA'],
+                       edgecolor='white', linewidth=0.3, zorder=3)
 
             lim = 1.08
             if not sub.empty:
                 lim = max(sub[x_col].max(), sub[y_col].max(), 0.1) * 1.08
-            ax.plot([0, lim], [0, lim], 'k--', lw=0.8, alpha=0.4, zorder=1)
-            ax.fill_between([0, lim], [0, lim], [lim, lim], alpha=0.03,
-                            color='red', zorder=0)
-            ax.fill_between([0, lim], [0, 0], [0, lim], alpha=0.03,
-                            color='green', zorder=0)
+            diagonal_scatter(ax, lim=lim)
 
             n_below = int((sub[y_col] < sub[x_col]).sum())
             n_above = int((sub[y_col] > sub[x_col]).sum())
             n_eq = int((sub[y_col] == sub[x_col]).sum())
 
-            ax.set_title(f'{model}  (R:{n_below} D:{n_above} T:{n_eq})',
-                         fontsize=10)
-            ax.set_xlabel(x_label, fontsize=8)
-            ax.set_ylabel(y_label, fontsize=8)
-            ax.set_xlim(-0.02, lim)
-            ax.set_ylim(-0.02, lim)
-            ax.set_aspect('equal')
+            ax.set_title(f'{model}  (R:{n_below} D:{n_above} T:{n_eq})')
 
-    fig.suptitle(suptitle, fontsize=13, y=0.995)
-    plt.tight_layout(rect=[0, 0, 1, 0.97])
+    fig.suptitle(suptitle, y=0.995)
+    fig.supxlabel(x_label, y=0.02)
+    fig.supylabel(y_label, x=0.005)
+    plt.tight_layout(rect=[0.02, 0.04, 1, 0.96])
     _save(fig, save_name)
 
 
@@ -209,8 +224,11 @@ def fig_scatter_vs_species(df):
     n_well = int((fam_res >= RESOLUTION_THRESHOLD).sum())
     n_poor = int((fam_res < RESOLUTION_THRESHOLD).sum())
 
-    fig, axes = plt.subplots(3, MAX_COLS, figsize=(4 * MAX_COLS, 4.5 * 3),
-                             squeeze=False)
+    fig_w = MAX_COLS * PANEL_SIZE
+    fig_h = len(MODEL_ROWS) * PANEL_SIZE + 1.2
+    fig, axes = plt.subplots(len(MODEL_ROWS), MAX_COLS,
+                             figsize=(fig_w, fig_h), squeeze=False,
+                             gridspec_kw={'hspace': 0.45, 'wspace': 0.3})
 
     for row_idx, row_models in enumerate(MODEL_ROWS):
         for col_idx in range(MAX_COLS):
@@ -228,43 +246,48 @@ def fig_scatter_vs_species(df):
             well = sub[sub['ncbi_resolution'] >= RESOLUTION_THRESHOLD]
             poor = sub[sub['ncbi_resolution'] < RESOLUTION_THRESHOLD]
 
+            # Filled markers = informative reference; open markers = polytomy-rich
             ax.scatter(well['nRF_dna_vs_sp'], well['nRF_rna_vs_sp'],
-                       s=24, alpha=0.7, c='steelblue', edgecolor='steelblue',
-                       linewidth=0.6, zorder=3,
-                       label=f'≥{int(RESOLUTION_THRESHOLD*100)}% (n={len(well)})')
+                       s=18, alpha=0.75,
+                       c=COLORS['NCBI'], edgecolor=COLORS['NCBI'],
+                       linewidth=0.5, zorder=3)
             ax.scatter(poor['nRF_dna_vs_sp'], poor['nRF_rna_vs_sp'],
-                       s=24, alpha=0.7, facecolor='none', edgecolor='gray',
-                       linewidth=0.8, zorder=2,
-                       label=f'<{int(RESOLUTION_THRESHOLD*100)}% (n={len(poor)})')
+                       s=18, alpha=0.7,
+                       facecolor='none', edgecolor=COLORS['tie'],
+                       linewidth=0.7, zorder=2)
 
-            lim = 1.08
-            ax.plot([0, lim], [0, lim], 'k--', lw=0.8, alpha=0.4, zorder=1)
-            ax.fill_between([0, lim], [0, lim], [lim, lim], alpha=0.03,
-                            color='red', zorder=0)
-            ax.fill_between([0, lim], [0, 0], [0, lim], alpha=0.03,
-                            color='green', zorder=0)
+            diagonal_scatter(ax, lim=1.08)
 
             n_below = int((well['nRF_rna_vs_sp'] < well['nRF_dna_vs_sp']).sum())
             n_above = int((well['nRF_rna_vs_sp'] > well['nRF_dna_vs_sp']).sum())
             n_eq = int((well['nRF_rna_vs_sp'] == well['nRF_dna_vs_sp']).sum())
 
-            ax.set_title(f'{model}  (R:{n_below} D:{n_above} T:{n_eq})',
-                         fontsize=10)
-            ax.set_xlabel('nRF (DNA vs NCBI Taxonomy)', fontsize=8)
-            ax.set_ylabel('nRF (RNA vs NCBI Taxonomy)', fontsize=8)
-            ax.set_xlim(-0.02, lim)
-            ax.set_ylim(-0.02, lim)
-            ax.set_aspect('equal')
-            if row_idx == 0 and col_idx == 0:
-                ax.legend(loc='lower right', fontsize=7, framealpha=0.9,
-                          title='NCBI resolution', title_fontsize=7)
+            ax.set_title(f'{model}  (R:{n_below} D:{n_above} T:{n_eq})')
 
-    fig.suptitle((f'Normalised Robinson-Foulds Distance to NCBI Taxonomy Tree '
-                  f'— per RNA Model ({n_fam} families: '
-                  f'{n_well} ≥{int(RESOLUTION_THRESHOLD*100)}%, '
-                  f'{n_poor} <{int(RESOLUTION_THRESHOLD*100)}% NCBI resolution)'),
-                 fontsize=13, y=0.995)
-    plt.tight_layout(rect=[0, 0, 1, 0.97])
+    pct = int(RESOLUTION_THRESHOLD * 100)
+    legend_handles = [
+        plt.Line2D([], [], marker='o', linestyle='',
+                   markerfacecolor=COLORS['NCBI'],
+                   markeredgecolor=COLORS['NCBI'], markersize=5,
+                   label=f'NCBI resolution ≥{pct}% (n={n_well})'),
+        plt.Line2D([], [], marker='o', linestyle='',
+                   markerfacecolor='none',
+                   markeredgecolor=COLORS['tie'], markersize=5,
+                   label=f'NCBI resolution <{pct}% (n={n_poor})'),
+    ]
+    # Park the legend in the empty upper-right cells of row 1 (cols 3–5
+    # are hidden because row 1 only has S16, S16A, S16B).
+    fig.legend(handles=legend_handles, loc='center', ncol=1,
+               frameon=True, framealpha=0.9,
+               title='NCBI resolution', title_fontsize=9,
+               bbox_to_anchor=(0.78, 0.83))
+
+    fig.suptitle((f'Normalised Robinson-Foulds distance to NCBI taxonomy tree '
+                  f'— per RNA model ({n_fam} families)'),
+                 y=0.99)
+    fig.supxlabel('nRF (DNA vs NCBI Taxonomy)', y=0.015)
+    fig.supylabel('nRF (RNA vs NCBI Taxonomy)', x=0.005)
+    fig.subplots_adjust(top=0.94, bottom=0.08, left=0.05, right=0.99)
     _save(fig, f'{DATE_TAG}_nRF_Taxonomy_{DATASET_TAG}')
 
 
@@ -294,10 +317,7 @@ def print_stratified_summary(df):
 
 
 def _save(fig, name):
-    for ext in ['png', 'pdf']:
-        path = join(OUTPUT_DIR, f'{name}.{ext}')
-        fig.savefig(path, dpi=200)
-    plt.close(fig)
+    save_figure(fig, join(OUTPUT_DIR, f'{name}.pdf'))
     print(f"  Saved {name}")
 
 
