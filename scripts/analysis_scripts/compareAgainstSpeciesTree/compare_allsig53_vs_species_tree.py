@@ -652,7 +652,7 @@ FAMILY_MODES = {
 }
 
 OUTPUT_SUFFIXES = {
-    'all-significant': '260306_allsig53_species_tree_comparison',
+    'all-significant': '260306_allsig_species_tree_comparison',
     'any-significant': '260306_anysig_species_tree_comparison',
     'all': '260306_all_species_tree_comparison',
 }
