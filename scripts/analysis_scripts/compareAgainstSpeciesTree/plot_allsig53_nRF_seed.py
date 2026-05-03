@@ -43,6 +43,10 @@ RESOLUTION_THRESHOLD = 0.5
 DATASET_TAG = "SEED"
 DATE_TAG = datetime.now().strftime("%y%m%d")
 
+# Small uniform jitter (in nRF units) so families with identical nRF
+# coordinates fan out visually instead of stacking into a single dot.
+JITTER = 0.008
+
 
 def load_data():
     return pd.read_csv(INPUT_CSV)
@@ -219,7 +223,6 @@ def fig_scatter_vs_species(df):
     valid = df.dropna(subset=['nRF_dna_vs_sp', 'nRF_rna_vs_sp']).copy()
     if valid.empty:
         return
-    n_fam = valid['RNA_family'].nunique()
     fam_res = valid.groupby('RNA_family')['ncbi_resolution'].first()
     n_well = int((fam_res >= RESOLUTION_THRESHOLD).sum())
     n_poor = int((fam_res < RESOLUTION_THRESHOLD).sum())
@@ -246,12 +249,18 @@ def fig_scatter_vs_species(df):
             well = sub[sub['ncbi_resolution'] >= RESOLUTION_THRESHOLD]
             poor = sub[sub['ncbi_resolution'] < RESOLUTION_THRESHOLD]
 
+            rng = np.random.default_rng(hash(model) & 0xFFFF)
+            jw = rng.uniform(-JITTER, JITTER, size=(2, len(well)))
+            jp = rng.uniform(-JITTER, JITTER, size=(2, len(poor)))
+
             # Filled markers = informative reference; open markers = polytomy-rich
-            ax.scatter(well['nRF_dna_vs_sp'], well['nRF_rna_vs_sp'],
+            ax.scatter(well['nRF_dna_vs_sp'] + jw[0],
+                       well['nRF_rna_vs_sp'] + jw[1],
                        s=18, alpha=0.75,
                        c=COLORS['NCBI'], edgecolor=COLORS['NCBI'],
                        linewidth=0.5, zorder=3)
-            ax.scatter(poor['nRF_dna_vs_sp'], poor['nRF_rna_vs_sp'],
+            ax.scatter(poor['nRF_dna_vs_sp'] + jp[0],
+                       poor['nRF_rna_vs_sp'] + jp[1],
                        s=18, alpha=0.7,
                        facecolor='none', edgecolor=COLORS['tie'],
                        linewidth=0.7, zorder=2)
@@ -282,8 +291,8 @@ def fig_scatter_vs_species(df):
                title='NCBI resolution', title_fontsize=9,
                bbox_to_anchor=(0.78, 0.83))
 
-    fig.suptitle((f'Normalised Robinson-Foulds distance to NCBI taxonomy tree '
-                  f'— per RNA model ({n_fam} families)'),
+    fig.suptitle('Normalised Robinson-Foulds distance to NCBI taxonomy tree '
+                 '— per RNA model',
                  y=0.99)
     fig.supxlabel('nRF (DNA vs NCBI Taxonomy)', y=0.015)
     fig.supylabel('nRF (RNA vs NCBI Taxonomy)', x=0.005)
