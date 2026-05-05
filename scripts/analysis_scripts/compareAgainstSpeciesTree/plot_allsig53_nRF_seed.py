@@ -43,9 +43,14 @@ RESOLUTION_THRESHOLD = 0.5
 DATASET_TAG = "SEED"
 DATE_TAG = datetime.now().strftime("%y%m%d")
 
-# Small uniform jitter (in nRF units) so families with identical nRF
+# Darker grey for the polytomy-rich (<50% NCBI resolution) dots so they
+# read clearly against the figure background without competing with the
+# manuscript-wide "tie" colour (#999999).
+DARK_GREY = "#525252"
+
+# Uniform jitter (in nRF units) so families with identical nRF
 # coordinates fan out visually instead of stacking into a single dot.
-JITTER = 0.008
+JITTER = 0.02
 
 
 def load_data():
@@ -212,20 +217,22 @@ def fig_scatter_vs_rfam(df):
     )
 
 
-# ── Figure 4: Scatter nRF(RNA vs NCBI) vs nRF(DNA vs NCBI), coloured by NCBI resolution ──
-def fig_scatter_vs_species(df):
-    """Scatter grid coloured by NCBI tree resolution.
+# ── Figure 4: Scatter nRF(RNA vs NCBI) vs nRF(DNA vs NCBI) ────────────────
+def _fig_scatter_vs_species(df, split_by_resolution, save_suffix):
+    """Scatter grid of nRF against the NCBI taxonomy tree.
 
-    Filled circles: families where NCBI taxonomy resolves >= RESOLUTION_THRESHOLD
-                    of internal branches (informative reference).
-    Open circles:    families where NCBI is largely a polytomy (caveat applies).
+    split_by_resolution=False: single-colour scatter, all families.
+    split_by_resolution=True:  well-resolved (≥50%) families in NCBI purple,
+                               polytomy-rich (<50%) families in highlight orange.
     """
     valid = df.dropna(subset=['nRF_dna_vs_sp', 'nRF_rna_vs_sp']).copy()
     if valid.empty:
         return
-    fam_res = valid.groupby('RNA_family')['ncbi_resolution'].first()
-    n_well = int((fam_res >= RESOLUTION_THRESHOLD).sum())
-    n_poor = int((fam_res < RESOLUTION_THRESHOLD).sum())
+
+    if split_by_resolution:
+        fam_res = valid.groupby('RNA_family')['ncbi_resolution'].first()
+        n_well = int((fam_res >= RESOLUTION_THRESHOLD).sum())
+        n_poor = int((fam_res < RESOLUTION_THRESHOLD).sum())
 
     fig_w = MAX_COLS * PANEL_SIZE
     fig_h = len(MODEL_ROWS) * PANEL_SIZE + 1.2
@@ -246,50 +253,61 @@ def fig_scatter_vs_species(df):
                 continue
 
             sub = valid[valid['model'] == model]
-            well = sub[sub['ncbi_resolution'] >= RESOLUTION_THRESHOLD]
-            poor = sub[sub['ncbi_resolution'] < RESOLUTION_THRESHOLD]
-
             rng = np.random.default_rng(hash(model) & 0xFFFF)
-            jw = rng.uniform(-JITTER, JITTER, size=(2, len(well)))
-            jp = rng.uniform(-JITTER, JITTER, size=(2, len(poor)))
 
-            # Filled markers = informative reference; open markers = polytomy-rich
-            ax.scatter(well['nRF_dna_vs_sp'] + jw[0],
-                       well['nRF_rna_vs_sp'] + jw[1],
-                       s=18, alpha=0.75,
-                       c=COLORS['NCBI'], edgecolor=COLORS['NCBI'],
-                       linewidth=0.5, zorder=3)
-            ax.scatter(poor['nRF_dna_vs_sp'] + jp[0],
-                       poor['nRF_rna_vs_sp'] + jp[1],
-                       s=18, alpha=0.7,
-                       facecolor='none', edgecolor=COLORS['tie'],
-                       linewidth=0.7, zorder=2)
+            if split_by_resolution:
+                well = sub[sub['ncbi_resolution'] >= RESOLUTION_THRESHOLD]
+                poor = sub[sub['ncbi_resolution'] < RESOLUTION_THRESHOLD]
+                jw = rng.uniform(-JITTER, JITTER, size=(2, len(well)))
+                jp = rng.uniform(-JITTER, JITTER, size=(2, len(poor)))
+                ax.scatter(well['nRF_dna_vs_sp'] + jw[0],
+                           well['nRF_rna_vs_sp'] + jw[1],
+                           s=18, alpha=0.75,
+                           c=COLORS['NCBI'], edgecolor=COLORS['NCBI'],
+                           linewidth=0.5, zorder=3)
+                ax.scatter(poor['nRF_dna_vs_sp'] + jp[0],
+                           poor['nRF_rna_vs_sp'] + jp[1],
+                           s=18, alpha=0.75,
+                           c=DARK_GREY, edgecolor=DARK_GREY,
+                           linewidth=0.5, zorder=2)
+                # Tally only well-resolved families: poorly-resolved NCBI
+                # references mostly produce ties at nRF=1, which would
+                # inflate the T column without carrying real signal.
+                counts_src = well
+            else:
+                jx = rng.uniform(-JITTER, JITTER, size=len(sub))
+                jy = rng.uniform(-JITTER, JITTER, size=len(sub))
+                ax.scatter(sub['nRF_dna_vs_sp'] + jx,
+                           sub['nRF_rna_vs_sp'] + jy,
+                           s=18, alpha=0.75,
+                           c=COLORS['NCBI'], edgecolor=COLORS['NCBI'],
+                           linewidth=0.5, zorder=3)
+                counts_src = sub
 
             diagonal_scatter(ax, lim=1.08)
 
-            n_below = int((well['nRF_rna_vs_sp'] < well['nRF_dna_vs_sp']).sum())
-            n_above = int((well['nRF_rna_vs_sp'] > well['nRF_dna_vs_sp']).sum())
-            n_eq = int((well['nRF_rna_vs_sp'] == well['nRF_dna_vs_sp']).sum())
+            n_below = int((counts_src['nRF_rna_vs_sp'] < counts_src['nRF_dna_vs_sp']).sum())
+            n_above = int((counts_src['nRF_rna_vs_sp'] > counts_src['nRF_dna_vs_sp']).sum())
+            n_eq = int((counts_src['nRF_rna_vs_sp'] == counts_src['nRF_dna_vs_sp']).sum())
 
             ax.set_title(f'{model}  (R:{n_below} D:{n_above} T:{n_eq})')
 
-    pct = int(RESOLUTION_THRESHOLD * 100)
-    legend_handles = [
-        plt.Line2D([], [], marker='o', linestyle='',
-                   markerfacecolor=COLORS['NCBI'],
-                   markeredgecolor=COLORS['NCBI'], markersize=5,
-                   label=f'NCBI resolution ≥{pct}% (n={n_well})'),
-        plt.Line2D([], [], marker='o', linestyle='',
-                   markerfacecolor='none',
-                   markeredgecolor=COLORS['tie'], markersize=5,
-                   label=f'NCBI resolution <{pct}% (n={n_poor})'),
-    ]
-    # Park the legend in the empty upper-right cells of row 1 (cols 3–5
-    # are hidden because row 1 only has S16, S16A, S16B).
-    fig.legend(handles=legend_handles, loc='center', ncol=1,
-               frameon=True, framealpha=0.9,
-               title='NCBI resolution', title_fontsize=9,
-               bbox_to_anchor=(0.78, 0.83))
+    if split_by_resolution:
+        pct = int(RESOLUTION_THRESHOLD * 100)
+        legend_handles = [
+            plt.Line2D([], [], marker='o', linestyle='',
+                       markerfacecolor=COLORS['NCBI'],
+                       markeredgecolor=COLORS['NCBI'], markersize=5,
+                       label=f'NCBI resolution ≥{pct}% (n={n_well})'),
+            plt.Line2D([], [], marker='o', linestyle='',
+                       markerfacecolor=DARK_GREY,
+                       markeredgecolor=DARK_GREY, markersize=5,
+                       label=f'NCBI resolution <{pct}% (n={n_poor})'),
+        ]
+        fig.legend(handles=legend_handles, loc='center', ncol=1,
+                   frameon=True, framealpha=0.9,
+                   title='NCBI resolution', title_fontsize=9,
+                   bbox_to_anchor=(0.78, 0.83))
 
     fig.suptitle('Normalised Robinson-Foulds distance to NCBI taxonomy tree '
                  '— per RNA model',
@@ -297,7 +315,16 @@ def fig_scatter_vs_species(df):
     fig.supxlabel('nRF (DNA vs NCBI Taxonomy)', y=0.015)
     fig.supylabel('nRF (RNA vs NCBI Taxonomy)', x=0.005)
     fig.subplots_adjust(top=0.94, bottom=0.08, left=0.05, right=0.99)
-    _save(fig, f'{DATE_TAG}_nRF_Taxonomy_{DATASET_TAG}')
+    _save(fig, f'{DATE_TAG}_nRF_Taxonomy_{DATASET_TAG}{save_suffix}')
+
+
+def fig_scatter_vs_species(df):
+    _fig_scatter_vs_species(df, split_by_resolution=False, save_suffix='')
+
+
+def fig_scatter_vs_species_byres(df):
+    _fig_scatter_vs_species(df, split_by_resolution=True,
+                            save_suffix='_byNCBIres')
 
 
 def print_stratified_summary(df):
@@ -335,7 +362,8 @@ def main():
     df = load_data()
     print(f"Loaded {len(df)} rows, {df.RNA_family.nunique()} families\n")
 
-    fig_scatter_vs_species(df)       # nRF vs NCBI (coloured by resolution)
+    fig_scatter_vs_species(df)        # nRF vs NCBI, all families one colour
+    fig_scatter_vs_species_byres(df)  # same plot, split by NCBI resolution
     print_stratified_summary(df)
 
     print(f"\nAll figures saved to: {OUTPUT_DIR}")
