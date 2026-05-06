@@ -11,9 +11,21 @@ Usage:
 
 import argparse
 import os
+import sys
+from datetime import datetime
 from os.path import join, isdir
+from pathlib import Path
 import pandas as pd
 import matplotlib.pyplot as plt
+
+DATE_TAG = datetime.now().strftime("%y%m%d")
+
+# Shared manuscript-wide plot style
+sys.path.insert(0, str(next(
+    p for p in Path(__file__).resolve().parents if p.name == "scripts"
+)))
+from plot_style import apply_style, COLORS, FIG_DOUBLE, save_figure
+apply_style()
 
 DATASET_CONFIGS = {
     'seed': {
@@ -148,22 +160,32 @@ def plot_significance_bar_chart(sig_table, dataset, output_path):
 
     labels = list(counts.index) + ['Intersection']
     values = list(counts.values) + [intersection]
-    colors = ['steelblue'] * len(counts) + ['lightsteelblue']
+    # Per-model bars in the RNA semantic colour; intersection bar in the
+    # highlight colour to set it visually apart.
+    colors = [COLORS['RNA']] * len(counts) + [COLORS['highlight']]
 
-    fig, ax = plt.subplots(figsize=(max(10, len(labels) * 0.9), 5))
-    bars = ax.bar(labels, values, color=colors, edgecolor='black', linewidth=0.5)
+    # Width scales with bar count, capped at journal double-column.
+    fig_width = min(FIG_DOUBLE, max(FIG_DOUBLE * 0.55, len(labels) * 0.45))
+    fig, ax = plt.subplots(figsize=(fig_width, 3.0))
+    bars = ax.bar(labels, values, color=colors,
+                  edgecolor='white', linewidth=0.5)
 
     for bar, val in zip(bars, values):
         ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 2,
-                str(val), ha='center', va='bottom', fontsize=9)
+                str(val), ha='center', va='bottom')
 
-    ax.set_ylabel('Count')
-    ax.set_title(f'AU-Test Significant RNAs per Model & Intersection Across All Models ({dataset.upper()})')
+    ax.set_ylabel('Number of significant RNA families')
+    ax.set_title(f'AU-test significant RNA families per model — '
+                 f'{dataset.upper()}-alignment dataset')
     ax.set_ylim(0, max(values) * 1.12)
-    plt.xticks(rotation=45, ha='right')
+    # Tidy axis: drop the box, keep only the bottom and left spines.
+    for side in ('top', 'right'):
+        ax.spines[side].set_visible(False)
+    ax.tick_params(axis='x', rotation=45)
+    for tick in ax.get_xticklabels():
+        tick.set_horizontalalignment('right')
     plt.tight_layout()
-    plt.savefig(output_path, dpi=150)
-    plt.close()
+    save_figure(fig, output_path)
     print(f"Figure saved to {output_path}")
 
 
@@ -186,7 +208,7 @@ def main():
     print(f"    {intersection_families}")
     print(f"  Total families: {len(sig_table)}")
 
-    output_png = join(dir_au, f'AUtest_{args.dataset.upper()}.png')
+    output_png = join(dir_au, f'{DATE_TAG}_AUtest_{args.dataset.upper()}.png')
     plot_significance_bar_chart(sig_table, args.dataset, output_png)
 
 
