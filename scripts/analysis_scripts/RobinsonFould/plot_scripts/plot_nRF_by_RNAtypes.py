@@ -22,8 +22,11 @@ Dependencies
 """
 
 import os
+import sys
 import glob
 import logging
+from datetime import datetime
+from pathlib import Path
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -31,25 +34,42 @@ import matplotlib.patches as mpatches
 from scipy.stats import gaussian_kde
 from Bio import Phylo
 
+# Shared manuscript-wide plot style
+sys.path.insert(0, str(next(
+    p for p in Path(__file__).resolve().parents if p.name == "scripts"
+)))
+from plot_style import (
+    apply_style, COLORS, FIG_DOUBLE, style_panel, save_figure,
+)
+apply_style()
+
 
 # =============================================================================
 # CONFIGURATION — edit paths here
 # =============================================================================
 
-#DIR_WORKING   = os.path.expanduser("~/RNAPhylo/seedAlignment_AllModels")
-DIR_WORKING = "/Users/u7875558/RNAPhylo/fullAlignment"
+DATASETS = {
+    "seed": {
+        "dir_working": os.path.expanduser("~/RNAPhylo/seedAlignment_AllModels"),
+        "model_order": [
+            "S16", "S16A", "S16B",
+            "S7A", "S7B", "S7C", "S7D", "S7E", "S7F",
+            "S6A", "S6B", "S6C", "S6D", "S6E",
+        ],
+        "tag": "SEED",
+    },
+    "full": {
+        "dir_working": "/Users/u7875558/RNAPhylo/fullAlignment",
+        "model_order": ["S16", "S7A", "S6A"],
+        "tag": "FULL",
+    },
+}
 
-DIR_OUTPUTS   = os.path.join(DIR_WORKING, "outputs")
-DIR_RF        = os.path.join(DIR_OUTPUTS, "260220_RF_distances")   # CHANGED
-DIR_DNA_TREES = os.path.join(DIR_OUTPUTS, "inferred_trees", "DNA")
+# Rfam.full.seed.tbl lives only under the seed alignment input dir; the full
+# alignment shares the same Rfam metadata, so this path is dataset-independent.
+RFAM_TBL = "~/RNAPhylo/seedAlignment_AllModels/inputs/Rfam.full.seed.tbl"
 
-# Rfam metadata files (adjust paths if needed)
-#RFAM_TBL         = os.path.join(DIR_WORKING, "inputs/Rfam.full.seed.tbl")
-
-RFAM_TBL         = "~/RNAPhylo/seedAlignment_AllModels/inputs/Rfam.full.seed.tbl"
-RFAM_FAMILY_TXT  = os.path.join(DIR_WORKING, "inputs/family.txt")
-
-OUTPUT_FIG = os.path.join(DIR_OUTPUTS, "rf_best_density_by_rna_type.pdf")
+DATE_TAG = datetime.now().strftime("%y%m%d")
 
 # --- RNA type groups ----------------------------------------------------------
 RNA_TYPE_ORDER = [
@@ -93,8 +113,8 @@ TYPE_MAP = {
     "Gene;":                             "Other",
 }
 
-COLOR_RNA = "#E05C5C"   # red  — nRF(T_rna_best, T_dna_best)
-COLOR_DNA = "#4BBFBF"   # teal — nRF(T_dna_best, T_dna2_best)
+COLOR_RNA = COLORS["RNA"]   # vermillion — nRF(T_rna_best, T_dna_best)
+COLOR_DNA = COLORS["DNA"]   # blue       — nRF(T_dna_best, T_dna2_best)
 
 BW_METHOD  = "scott"
 KDE_POINTS = 500
@@ -264,24 +284,35 @@ def plot_kde(ax, vals, color, bw="scott"):
     kde = gaussian_kde(arr, bw_method=bw)
     x = np.linspace(0, 1, KDE_POINTS)
     y = kde(x)
-    ax.plot(x, y, color=color, linewidth=1.8)
-    ax.fill_between(x, y, alpha=0.15, color=color)
+    ax.plot(x, y, color=color, linewidth=1.6)
+    ax.fill_between(x, y, alpha=0.18, color=color)
     return True
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--dataset", choices=list(DATASETS), default="full",
+                        help="Which dataset to plot (seed or full)")
+    args = parser.parse_args()
+
+    cfg = DATASETS[args.dataset]
+    global DIR_OUTPUTS, DIR_RF, DIR_DNA_TREES, RFAM_FAMILY_TXT
+    global OUTPUT_FIG_ALL, OUTPUT_FIG_SELECTED
+    DIR_OUTPUTS         = os.path.join(cfg["dir_working"], "outputs")
+    DIR_RF              = os.path.join(DIR_OUTPUTS, "260220_RF_distances")
+    DIR_DNA_TREES       = os.path.join(DIR_OUTPUTS, "inferred_trees", "DNA")
+    RFAM_FAMILY_TXT     = os.path.join(cfg["dir_working"], "inputs/family.txt")
+    plots_dir           = os.path.join(DIR_RF, "plots")
+    base                = f"{DATE_TAG}_rf_best_density_by_rna_type"
+    OUTPUT_FIG_ALL      = os.path.join(plots_dir, f"{base}_{cfg['tag']}.pdf")
+    OUTPUT_FIG_SELECTED = os.path.join(plots_dir, f"{base}_selected_{cfg['tag']}.pdf")
+
     # ── 1. Build RNA type map ─────────────────────────────────────────────────
     type_map = build_rna_type_map()
 
     # ── 2. Discover RNA models ────────────────────────────────────────────────
-    #MODEL_ORDER = [
-    #    "S16", "S16A", "S16B",
-    #    "S7A", "S7B", "S7C", "S7D", "S7E", "S7F",
-    #    "S6A", "S6B", "S6C", "S6D", "S6E",
-    #]
-
-    MODEL_ORDER = ["S16", "S7A", "S6A"]
-    # CHANGED: look for DNA_vs_{model} folders
+    MODEL_ORDER = cfg["model_order"]
     available = {
         d.replace("DNA_vs_", "") for d in os.listdir(DIR_RF)
         if os.path.isdir(os.path.join(DIR_RF, d)) and d.startswith("DNA_vs_")
@@ -310,13 +341,20 @@ def main():
     log.info(f"Active RNA types ({len(all_active_types)}): {all_active_types}")
 
     # ── 6. Plot both figures ──────────────────────────────────────────────────
+    # Each KDE panel needs ~1.6 in to stay readable; with 14 model columns
+    # that means letting the figure grow wider than journal double-column.
+    PANEL_W = 1.6
+    PANEL_H = 1.6
+
     def make_figure(active_types, output_path, title):
         n_rows = len(active_types)
         n_cols = len(rna_models)
 
+        fig_w = max(FIG_DOUBLE, n_cols * PANEL_W)
+        fig_h = max(n_rows, 1) * PANEL_H
         fig, axes = plt.subplots(
             n_rows, n_cols,
-            figsize=(n_cols * 3.2, n_rows * 2.8),
+            figsize=(fig_w, fig_h),
             sharex=True, sharey=False
         )
         axes = np.array(axes).reshape(n_rows, n_cols)
@@ -328,10 +366,7 @@ def main():
                 plot_kde(ax, dna_by_type.get(rna_type, []), color=COLOR_DNA)
                 plot_kde(ax, rna_by_type[model].get(rna_type, []), color=COLOR_RNA)
 
-                ax.set_facecolor("#F2F2F2")
-                ax.grid(True, color="white", linewidth=0.7, linestyle="-")
-                ax.spines[:].set_visible(False)
-                ax.tick_params(labelsize=11)
+                style_panel(ax)
                 ax.set_xlim(0, 1)
                 ax.set_ylim(0, 5)
 
@@ -339,13 +374,13 @@ def main():
                     ax.tick_params(labelleft=False)
 
                 if row_idx == 0:
-                    ax.set_title(model, fontsize=13, fontweight="bold", pad=5)
+                    ax.set_title(model, fontweight="bold", pad=5)
 
                 if col_idx == n_cols - 1:
                     ax.annotate(
                         rna_type,
                         xy=(1.02, 0.5), xycoords="axes fraction",
-                        fontsize=12, fontweight="bold",
+                        fontweight="bold",
                         va="center", ha="left", rotation=0,
                         annotation_clip=False
                     )
@@ -358,25 +393,23 @@ def main():
         ]
         fig.legend(
             handles=legend_handles, loc="upper center", ncol=2,
-            fontsize=16, frameon=True, framealpha=0.9,
+            frameon=True, framealpha=0.9,
             bbox_to_anchor=(0.5, 1.02)
         )
-        fig.suptitle(title, fontsize=20, y=1.05)
+        fig.suptitle(title, y=1.05)
 
-        plt.tight_layout(rect=[0.03, 0.03, 0.88, 1])
+        plt.tight_layout(rect=[0.03, 0.03, 0.92, 1])
 
-        fig.text(0.44, 0.01, "Normalised RF distance", ha="center", fontsize=16)
-        fig.text(0.01, 0.5,  "Density", va="center", rotation=90, fontsize=16)
+        fig.text(0.46, 0.01, "Normalised RF distance", ha="center")
+        fig.text(0.01, 0.5,  "Density", va="center", rotation=90)
 
-        fig.savefig(output_path, dpi=300, bbox_inches="tight")
-        fig.savefig(output_path.replace(".pdf", ".png"), dpi=300, bbox_inches="tight")
+        save_figure(fig, output_path)
         log.info(f"Saved: {output_path}")
-        plt.show()
 
     # Figure 1 — all RNA types
     make_figure(
         active_types=all_active_types,
-        output_path=OUTPUT_FIG,
+        output_path=OUTPUT_FIG_ALL,
         title="Normalised RF distance (best trees) by RNA structural type and substitution model",
     )
 
@@ -385,8 +418,8 @@ def main():
     selected_active = [g for g in SELECTED_TYPES if g in all_active_types]
     make_figure(
         active_types=selected_active,
-        output_path=OUTPUT_FIG.replace(".pdf", "_selected.pdf"),
-        title="Normalised RF distance (best trees): rRNA, miRNA, Antisense",
+        output_path=OUTPUT_FIG_SELECTED,
+        title=f"Normalised RF distance (best trees): {', '.join(selected_active)}",
     )
 
 
