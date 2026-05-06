@@ -35,7 +35,7 @@ from compare_vs_species_tree import (
     FULL_MODELS,
     MIN_UNIQUE_TAXA,
 )
-from compare_allsig53_vs_species_tree import (
+from compare_allsig_vs_species_tree import (
     load_and_parse_rfam_tree,
     normalize_label,
     get_all_significant_families,

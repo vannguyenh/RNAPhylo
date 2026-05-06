@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """
 Compare Rfam, DNA, and RNA inferred trees against NCBI Taxonomy species trees
-for the 53 RNA families significant across ALL 14 AU-test models.
+for the families significant across ALL AU-test models.
+
+Works for both datasets (selected via --dataset); the family list is
+computed at runtime from the per-dataset significance table:
+  - seed alignment: 53 sig families across 14 RNA models
+  - full alignment: 80 sig families across S16/S6A/S7A
 
 Outputs:
   - Species trees with species name labels (for visualisation)
@@ -9,9 +14,13 @@ Outputs:
   - CSV with nRF distances between each tree type and species tree
   - Summary statistics
 
+Output folder is date-stamped (YYMMDD_*) so reruns don't overwrite older
+results.
+
 Usage:
-    python compare_allsig53_vs_species_tree.py
-    python compare_allsig53_vs_species_tree.py --rna RF00740   # single family test
+    python compare_allsig_vs_species_tree.py --dataset seed
+    python compare_allsig_vs_species_tree.py --dataset full
+    python compare_allsig_vs_species_tree.py --dataset full --rna RF01098  # single-family test
 """
 
 import argparse
@@ -20,6 +29,7 @@ import os
 import re
 import sys
 import types
+from datetime import datetime
 from os.path import join, isdir, isfile
 
 import numpy as np
@@ -651,10 +661,13 @@ FAMILY_MODES = {
     'all': get_all_families_with_trees,
 }
 
+# Output folders are date-stamped at import time so reruns automatically
+# write to a new directory (no manual editing needed each time).
+_RUN_DATE = datetime.now().strftime('%y%m%d')
 OUTPUT_SUFFIXES = {
-    'all-significant': '260306_allsig_species_tree_comparison',
-    'any-significant': '260306_anysig_species_tree_comparison',
-    'all': '260306_all_species_tree_comparison',
+    'all-significant': f'{_RUN_DATE}_allsig_species_tree_comparison',
+    'any-significant': f'{_RUN_DATE}_anysig_species_tree_comparison',
+    'all': f'{_RUN_DATE}_all_species_tree_comparison',
 }
 
 
