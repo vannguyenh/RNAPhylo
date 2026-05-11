@@ -16,6 +16,7 @@ Usage:
 """
 
 import argparse
+import csv
 import json
 import logging
 import os
@@ -72,6 +73,16 @@ IQTREE_PATH = "/Users/u7875558/tools/build-iqtree3/iqtree3"
 
 # Stockholm alignment directory for full dataset (accession -> species mapping)
 FULL_STO_DIR = "/Users/u7875558/RNAPhylo/fullAlignment/inputs/sto"
+
+# Pre-resolved accession -> NCBI TaxId map built by build_label_map.py
+# (uses NCBI esummary/efetch with full Organism, so it works for viruses,
+# subspecies, and other names where the .sto DE-line binomial parser fails).
+# Used as the primary resolver in resolve_leaf_taxids; the older parsers
+# remain as fallbacks.
+ACCESSION_LABEL_MAP_CSV = (
+    "/Users/u7875558/RNAPhylo/fullAlignment/outputs/"
+    "260505_allsig_convertTaxaNames/accession_label_map.csv"
+)
 
 # RNA type classification (reused from plot_nRF_by_RNAtypes.py)
 RFAM_FAMILY_TXT = "/Users/u7875558/RNAPhylo/seedAlignment_AllModels/inputs/family.txt"
@@ -266,6 +277,59 @@ def fetch_rfam_tree_taxid_mapping(rfam_id, cache_dir):
     return mapping
 
 
+_LABEL_MAP_CACHE = None
+
+
+def _load_accession_label_map():
+    """Load accession -> taxid dict from ACCESSION_LABEL_MAP_CSV (cached)."""
+    global _LABEL_MAP_CACHE
+    if _LABEL_MAP_CACHE is not None:
+        return _LABEL_MAP_CACHE
+    out: dict[str, int] = {}
+    if isfile(ACCESSION_LABEL_MAP_CSV):
+        with open(ACCESSION_LABEL_MAP_CSV) as f:
+            for r in csv.DictReader(f):
+                t = (r.get("taxid") or "").strip()
+                if t.isdigit():
+                    out[r["accession"]] = int(t)
+        log.info(f"Loaded {len(out)} accession->taxid entries from "
+                 f"{ACCESSION_LABEL_MAP_CSV}")
+    _LABEL_MAP_CACHE = out
+    return out
+
+
+def parse_label_map_taxid_mapping(rfam_id, sto_dir=FULL_STO_DIR):
+    """Build {acc/start-end: taxid} from accession_label_map.csv + .sto.
+
+    For each #=GS line in the family's .sto file, look up the bare accession
+    in the precomputed NCBI label map and emit a (acc/start-end -> taxid)
+    entry. This bypasses the messy DE-line parsing entirely and works for
+    viruses, subspecies, and any name where the binomial heuristic fails.
+
+    Returns {} if the map or .sto is unavailable.
+    """
+    acc_to_taxid = _load_accession_label_map()
+    if not acc_to_taxid:
+        return {}
+    sto_path = join(sto_dir, f"{rfam_id}.sto")
+    if not isfile(sto_path):
+        return {}
+    mapping: dict[str, int] = {}
+    with open(sto_path) as f:
+        for line in f:
+            if not line.startswith("#=GS"):
+                continue
+            parts = line.split(maxsplit=2)
+            if len(parts) < 2:
+                continue
+            full_id = parts[1]                # e.g. AP014966.1/12780867-12780958
+            acc = full_id.split("/", 1)[0]
+            taxid = acc_to_taxid.get(acc)
+            if taxid:
+                mapping[full_id] = taxid
+    return mapping
+
+
 def parse_sto_taxid_mapping(rfam_id, ncbi, cache_dir):
     """
     Parse a Stockholm (.sto) file to build {accession: taxon_id} mapping.
@@ -425,7 +489,11 @@ def resolve_leaf_taxids(tree, rfam_id, cache_dir, ncbi):
         if combined_map is None:
             rfam_map = fetch_rfam_tree_taxid_mapping(rfam_id, cache_dir)
             sto_map = parse_sto_taxid_mapping(rfam_id, ncbi, cache_dir)
-            combined_map = {**sto_map, **rfam_map}
+            label_map = parse_label_map_taxid_mapping(rfam_id)
+            # label_map (NCBI-Organism resolved) takes precedence over the
+            # older DE-line and Rfam-API resolvers because it handles viruses
+            # and subspecies correctly (e.g. RF01098 mouse + MMTV).
+            combined_map = {**rfam_map, **sto_map, **label_map}
 
         taxid = _resolve_one_label(label, combined_map)
         if taxid is not None:
@@ -466,7 +534,18 @@ def prune_duplicate_taxa(tree, label_to_taxid):
     """
     Remove duplicate taxa (multiple sequences from same species).
 
-    Keeps one leaf per taxon ID (the one with shortest root-to-tip distance).
+    Keeps one leaf per taxon ID — the leaf with the LONGEST terminal branch
+    length (i.e. the most strongly-supported tree position). Falls back to
+    root-to-tip distance if `edge_length` is missing.
+
+    Previously this used SHORTEST root-to-tip distance, which tended to
+    keep leaves whose terminal branches sat at RAxML's 1e-6 floor — i.e.
+    leaves whose tree position is essentially unsupported by the data.
+    For short alignments / RNA-model trees that produce many floor-length
+    branches, that criterion was effectively picking representatives at
+    random (file-iteration-order tiebreak). Longest terminal branch picks
+    the leaf whose specific placement carries the most likelihood signal.
+
     Returns: (pruned_tree, n_duplicates_removed, set_of_unique_taxids)
     """
     # Group leaves by taxon ID
@@ -482,19 +561,23 @@ def prune_duplicate_taxa(tree, label_to_taxid):
         else:
             unmapped.append(leaf)
 
-    # For each taxon ID with duplicates, keep the one with shortest root distance
+    # For each taxon ID with duplicates, keep the leaf with the LONGEST
+    # terminal branch length (most-determined position in the topology).
     labels_to_remove = []
     for taxid, leaves in taxid_to_leaves.items():
         if len(leaves) <= 1:
             continue
-        # Compute root-to-tip distance for each leaf
-        distances = []
+        scored = []
         for leaf in leaves:
-            dist = leaf.distance_from_root()
-            distances.append((dist, leaf))
-        distances.sort(key=lambda x: x[0])
-        # Keep the first (shortest distance), remove rest
-        for _, leaf in distances[1:]:
+            br = leaf.edge_length
+            if br is None:
+                # Fallback: use root-to-tip if no edge length is recorded.
+                br = leaf.distance_from_root()
+            scored.append((br, leaf))
+        # Sort descending so the kept leaf is the longest-branch one.
+        scored.sort(key=lambda x: x[0], reverse=True)
+        # Keep the first (longest branch), remove rest
+        for _, leaf in scored[1:]:
             labels_to_remove.append(leaf.taxon)
 
     # Also remove unmapped leaves
@@ -564,6 +647,40 @@ def get_ncbi_species_tree(taxon_ids, ncbi):
     )
 
     return dp_tree, n_polytomies, merged_map
+
+
+def compute_resolution_score(species_tree):
+    """Colless's Consensus Fork Index for an NCBI taxonomy tree.
+
+    Counts resolved internal edges in the UNROOTED form and divides by
+    the maximum possible (n_leaves - 3 for a fully resolved unrooted
+    binary tree). The unrooted convention matches how RF distance is
+    computed elsewhere in this pipeline (compute_rf_iqtree deroots both
+    trees before passing to IQ-TREE), so the score describes the same
+    shape RF compares.
+
+    The NCBI tree is rooted by construction (ete3 builds a hierarchy),
+    but we deroot before counting so the score is invariant to where
+    the taxonomy hierarchy is rooted.
+
+    Returns: (n_internal, n_max, resolution) or (None, None, None) if
+             the tree is missing or has fewer than 4 leaves.
+    """
+    if species_tree is None:
+        return None, None, None
+    t = species_tree.clone(depth=2)
+    if t.is_rooted or len(t.seed_node.child_nodes()) == 2:
+        t.deroot()
+    t.suppress_unifurcations()
+    n_leaves = sum(1 for _ in t.leaf_node_iter())
+    if n_leaves < 4:
+        return None, None, None
+    # Internal edges = internal nodes that have a parent (excludes seed_node).
+    n_internal = sum(1 for n in t.preorder_internal_node_iter()
+                     if n.parent_node is not None)
+    n_max = n_leaves - 3
+    resolution = n_internal / n_max if n_max > 0 else None
+    return n_internal, n_max, resolution
 
 
 # =============================================================================
