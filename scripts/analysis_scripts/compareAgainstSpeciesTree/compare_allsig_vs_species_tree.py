@@ -52,6 +52,7 @@ from compare_vs_species_tree import (
     fetch_rfam_tree_taxid_mapping,
     resolve_leaf_taxids,
     get_ncbi_species_tree,
+    compute_resolution_score,
     prune_duplicate_taxa,
     relabel_tree_to_taxids,
     compute_rf_iqtree,
@@ -343,6 +344,9 @@ def process_family_allsig(rfam_id, models, dir_au, cache_dir, ncbi,
         sp_dna_result = None
         sp_rna_result = None
         n_unique_taxa = 0
+        n_ncbi_internal = None
+        n_ncbi_max = None
+        ncbi_resolution = None
 
         if len(label_to_taxid) >= MIN_UNIQUE_TAXA:
             # Re-parse trees for species collapsing (originals used above for direct RF)
@@ -375,6 +379,9 @@ def process_family_allsig(rfam_id, models, dir_au, cache_dir, ncbi,
                                         existing.add(new_label)
 
                     n_unique_taxa = len(common_taxids)
+                    n_ncbi_internal, n_ncbi_max, ncbi_resolution = (
+                        compute_resolution_score(dna_species_tree)
+                    )
 
                     if dna_result_cache is None:
                         dna_result_cache = compute_rf_and_ic_simple(
@@ -448,6 +455,9 @@ def process_family_allsig(rfam_id, models, dir_au, cache_dir, ncbi,
             'n_dna_leaves': n_dna_leaves,
             'n_dna_unique_taxa': n_unique_taxa,
             'label_format': label_format,
+            'n_ncbi_internal': n_ncbi_internal,
+            'n_ncbi_max': n_ncbi_max,
+            'ncbi_resolution': ncbi_resolution,
         }
 
         # Step 1: vs species tree (nRF from IQ-TREE --normalize-dist, nIC from dendropy)
