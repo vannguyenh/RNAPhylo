@@ -10,21 +10,28 @@ Output:
     - This can be used to run bootstrap analysis with the correct seed numbers
 
 Usage:
-    python extract_best_seeds.py
+    python extract_best_seeds.py                       # seed dataset -> best_seeds.csv
+    python extract_best_seeds.py --dataset full        # full dataset -> best_seeds_full.csv
     python extract_best_seeds.py --rna RF00740
-    python extract_best_seeds.py --output best_seeds.csv
+    python extract_best_seeds.py --output myname.csv
 """
 
 import os
-from os.path import join, isdir, isfile
+from os.path import join, isdir
 import argparse
 import csv
 
-# Configuration - adjust these paths as needed
-DIR_WORKING = '/Users/u7875558/RNAPhylo/seedAlignment_AllModels'
-DIR_OUTPUTS = join(DIR_WORKING, 'outputs')
-DIR_TREES = join(DIR_OUTPUTS, 'inferred_trees')
-DIR_DNA = join(DIR_TREES, 'DNA')
+# Per-dataset working directories. Each dataset has its own
+# inferred_trees/<model>/<family>/RAxML_log.<family>.<seed> layout, so
+# best seeds must be computed separately per dataset.
+DATASET_DIRS = {
+    'seed': '/Users/u7875558/RNAPhylo/seedAlignment_AllModels',
+    'full': '/Users/u7875558/RNAPhylo/fullAlignment',
+}
+DEFAULT_OUTPUT = {
+    'seed': 'best_seeds.csv',
+    'full': 'best_seeds_full.csv',
+}
 
 # All RNA models
 RNA_MODELS = ['S16', 'S16A', 'S16B', 'S7A', 'S7B', 'S7C', 'S7D', 'S7E', 'S7F', 'S6A', 'S6B', 'S6C', 'S6D', 'S6E']
@@ -65,7 +72,7 @@ def extract_highest_loglh(dir_path):
     return best
 
 
-def extract_all_seeds(rna_family):
+def extract_all_seeds(rna_family, dir_trees):
     """
     Extract best seed numbers for one RNA family across DNA and all RNA models.
 
@@ -74,14 +81,14 @@ def extract_all_seeds(rna_family):
     results = {}
 
     # DNA
-    dna_path = join(DIR_DNA, rna_family)
+    dna_path = join(dir_trees, 'DNA', rna_family)
     dna_result = extract_highest_loglh(dna_path)
     if dna_result:
         results['DNA'] = dna_result
 
     # RNA models
     for model in RNA_MODELS:
-        model_path = join(DIR_TREES, model, rna_family)
+        model_path = join(dir_trees, model, rna_family)
         model_result = extract_highest_loglh(model_path)
         if model_result:
             results[model] = model_result
@@ -91,25 +98,33 @@ def extract_all_seeds(rna_family):
 
 def main():
     parser = argparse.ArgumentParser(description='Extract best seed numbers from RAxML log files')
+    parser.add_argument('--dataset', choices=sorted(DATASET_DIRS.keys()),
+                        default='seed',
+                        help='Which dataset to read trees from (default: seed)')
     parser.add_argument('--rna', type=str, help='Process only this RNA family (e.g., RF00740)')
-    parser.add_argument('--output', type=str, default='best_seeds.csv', help='Output CSV file')
-    #parser.add_argument('--trees_dir', type=str, default=DIR_TREES, help='Path to inferred_trees directory')
+    parser.add_argument('--output', type=str, default=None,
+                        help='Output CSV file (default: best_seeds.csv for seed, '
+                             'best_seeds_full.csv for full)')
 
     args = parser.parse_args()
 
-    #global DIR_TREES, DIR_DNA
-    #DIR_TREES = args.trees_dir
-    DIR_DNA = join(DIR_TREES, 'DNA')
+    dir_working = DATASET_DIRS[args.dataset]
+    dir_trees = join(dir_working, 'outputs', 'inferred_trees')
+    dir_dna = join(dir_trees, 'DNA')
+    output_path = args.output or DEFAULT_OUTPUT[args.dataset]
+    print(f"Dataset: {args.dataset}  ({dir_working})")
+    print(f"Output:  {output_path}")
+    print()
 
     # Get list of RNA families to process
     if args.rna:
         rna_families = [args.rna]
     else:
         # Get all RNA families from DNA directory
-        if isdir(DIR_DNA):
-            rna_families = sorted([d for d in os.listdir(DIR_DNA) if isdir(join(DIR_DNA, d))])
+        if isdir(dir_dna):
+            rna_families = sorted([d for d in os.listdir(dir_dna) if isdir(join(dir_dna, d))])
         else:
-            print(f"ERROR: DNA directory not found: {DIR_DNA}")
+            print(f"ERROR: DNA directory not found: {dir_dna}")
             return
 
     print(f"Processing {len(rna_families)} RNA families...")
@@ -120,7 +135,7 @@ def main():
 
     for rna in rna_families:
         print(f"Processing {rna}...")
-        results = extract_all_seeds(rna)
+        results = extract_all_seeds(rna, dir_trees)
 
         if results:
             row = {'RNA_family': rna}
@@ -150,13 +165,13 @@ def main():
         for model in RNA_MODELS:
             columns.extend([f'{model}_seed', f'{model}_loglh'])
 
-        with open(args.output, 'w', newline='') as f:
+        with open(output_path, 'w', newline='') as f:
             writer = csv.DictWriter(f, fieldnames=columns, extrasaction='ignore')
             writer.writeheader()
             writer.writerows(all_results)
 
         print()
-        print(f"Results saved to: {args.output}")
+        print(f"Results saved to: {output_path}")
         print()
 
         # Also print a simple summary for bash script usage
